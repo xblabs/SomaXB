@@ -8,7 +8,7 @@ utils.is = {
 
 utils.applyProperties = (target, extension, bindToExtension, list) => {
     if (Object.prototype.toString.apply(list) === '[object Array]') {
-        for (const i = 0, l = list.length; i < l; i++) {
+        for (let i = 0, l = list.length; i < l; i++) {
             if (target[list[i]] === undefined || target[list[i]] === null) {
                 if (bindToExtension && typeof extension[list[i]] === 'function') {
                     target[list[i]] = extension[list[i]].bind(extension);
@@ -36,7 +36,7 @@ utils.augment = (target, extension, list) => {
         return;
     }
     if (Object.prototype.toString.apply(list) === '[object Array]') {
-        for (const i = 0, l = list.length; i < l; i++) {
+        for (let i = 0, l = list.length; i < l; i++) {
             if (!target.prototype[list[i]]) {
                 target.prototype[list[i]] = extension.prototype[list[i]];
             }
