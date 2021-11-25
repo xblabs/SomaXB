@@ -10,9 +10,9 @@
         "test:watch": "mocha--require @babel/register --watch 'tests/**/*.js'",
         "test:jest": "jest"
     },
-    "main": "dist/cjs/soma.js",
-    "module": "dist/esm/soma.js",
-    "browser": "dist/soma.js",
+    "main": "index.ts",
+    "module": "index.ts",
+    "browser": "index.ts",
     "types": "types/soma.d.ts",
     "keywords": [
         "soma.js",
@@ -31,7 +31,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "http://github.com/soundstep/soma.git"
+        "url": "http://github.com/henryschmieder/soma.git"
     },
     "devDependencies": {
         "@babel/core": "7.6.4",
