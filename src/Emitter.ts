@@ -74,10 +74,18 @@ export default class Emitter
                 }
                 signal.dispatch.apply( signal, [ data ] );
             } else {
+                if( useIdInParams ) {
+                    data = {signalType:id}
+                }
+            }
+            if( data ) {
+                signal.dispatch.apply( signal, [ data ] );
+            }else{
                 signal.dispatch();
             }
         }
     }
+
 
 
     dispose()
