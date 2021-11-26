@@ -64,11 +64,14 @@ export default class Emitter
 
 
 
-    dispatch( id:string, data?: SignalEvent  ): void
+    dispatch( id:string, data?: SignalEvent, useIdInParams:boolean = true  ): void
     {
         const signal = this.signals[id];
         if( signal ) {
             if( data ) {
+                if( useIdInParams && Object.prototype.toString.call(data) === '[object Object]' && !data.hasOwnProperty('signalType')  ) {
+                    data.signalType = id
+                }
                 signal.dispatch.apply( signal, [ data ] );
             } else {
                 signal.dispatch();
