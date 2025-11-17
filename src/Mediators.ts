@@ -26,7 +26,7 @@ class Mediators {
         const mediatorList: T[] = [];
 
         if (Array.isArray(target) && target.length > 0) {
-            targetlist = [].concat(target);
+            targetlist = [...target];
         } else {
             targetlist.push(target);
         }
