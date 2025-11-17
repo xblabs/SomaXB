@@ -68,19 +68,18 @@ export default class Emitter
     {
         const signal = this.signals[id];
         if( signal ) {
-            if( data ) {
-                if( useIdInParams && Object.prototype.toString.call(data) === '[object Object]' && !data.hasOwnProperty('signalType')  ) {
-                    data.signalType = id
-                }
-                signal.dispatch.apply( signal, [ data ] );
-            } else {
-                if( useIdInParams ) {
-                    data = {signalType:id}
-                }
+            if( !data && useIdInParams ) {
+                // Create new data object with signalType
+                data = {signalType: id};
+            } else if( data && useIdInParams && Object.prototype.toString.call(data) === '[object Object]' && !data.hasOwnProperty('signalType') ) {
+                // Inject signalType into existing data object
+                data.signalType = id;
             }
+
+            // Dispatch once with or without data
             if( data ) {
-                signal.dispatch.apply( signal, [ data ] );
-            }else{
+                signal.dispatch(data);
+            } else {
                 signal.dispatch();
             }
         }

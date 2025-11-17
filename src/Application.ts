@@ -1,52 +1,44 @@
-// @ts-ignore
-//import infuse from '@soundstep/infuse';
 import {Injector} from "./infuse";
 import Emitter from './Emitter';
 import Commands from './Commands';
 import Mediators from './Mediators';
 import Modules from './Modules';
-//import utils from './utils';
-
 
 class Application
 {
-	// @ts-ignore
-	#injector?:Injector
-	// @ts-ignore
-	#emitter?:Emitter
-	// @ts-ignore
-	#commands?:Commands
-	// @ts-ignore
-	#mediators?:Mediators
-	// @ts-ignore
-	#modules?:Modules
+	#injector!: Injector;
+	#emitter!: Emitter;
+	#commands!: Commands;
+	#mediators!: Mediators;
+	#modules!: Modules;
 
 	get emitter(): Emitter
 	{
-		return this.#emitter || new Emitter()
+		return this.#emitter;
 	}
 
 	get injector(): Injector
 	{
-		return this.#injector || new Injector()
+		return this.#injector;
 	}
 
-	set commands(value:Commands) {
+	set commands(value: Commands) {
 		this.#commands = value;
 	}
+
 	get commands(): Commands
 	{
-		return this.#commands || new Commands()
+		return this.#commands;
 	}
 
 	get mediators(): Mediators
 	{
-		return this.#mediators || new Mediators()
+		return this.#mediators;
 	}
 
 	get modules(): Modules
 	{
-		return this.#modules || new Modules()
+		return this.#modules;
 	}
 
 
@@ -90,27 +82,26 @@ class Application
 
 	dispose()
 	{
-		if( this.#injector ) {
+		if (this.#injector) {
 			this.#injector.dispose();
 		}
-		if( this.#emitter ) {
+		if (this.#emitter) {
 			this.#emitter.dispose();
 		}
-		if( this.#commands ) {
+		if (this.#commands) {
 			this.#commands.dispose();
 		}
-		if( this.#mediators ) {
+		if (this.#mediators) {
 			this.#mediators.dispose();
 		}
-		if( this.#modules ) {
+		if (this.#modules) {
 			this.#modules.dispose();
 		}
-		this.#injector = undefined;
-		this.#emitter = undefined
-		this.#commands = undefined
-		this.#mediators = undefined
-		this.#modules = undefined
-
+		(this.#injector as any) = undefined;
+		(this.#emitter as any) = undefined;
+		(this.#commands as any) = undefined;
+		(this.#mediators as any) = undefined;
+		(this.#modules as any) = undefined;
 	}
 }
 
