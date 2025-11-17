@@ -10,10 +10,10 @@
         "test:watch": "mocha--require @babel/register --watch 'tests/**/*.js'",
         "test:jest": "jest"
     },
-    "main": "index.ts",
-    "module": "index.ts",
-    "browser": "index.ts",
-    "types": "types/soma.d.ts",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "browser": "dist/index.js",
+    "types": "dist/index.d.ts",
     "keywords": [
         "soma.js",
         "soma",
