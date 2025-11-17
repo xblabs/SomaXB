@@ -82,7 +82,8 @@ class Modules {
             // add arguments
             moduleArgs = moduleArgs.concat(args);
 
-            return injector.createInstance.apply(injector, moduleArgs) as T;
+            const [targetClass, ...instanceArgs] = moduleArgs;
+            return injector.createInstance(targetClass, ...instanceArgs) as T;
         };
 
         // find module class
