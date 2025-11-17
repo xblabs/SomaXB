@@ -1,5 +1,3 @@
-Here are the recommended changes for tsconfig.json:
-
 {
     "include": [
         "./src/**/*",
