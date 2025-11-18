@@ -5,6 +5,8 @@ class Modules {
 	injector
 	list
 
+	static inject = ["injector"]
+
 	constructor( injector )
 	{
 		this.injector = injector;
@@ -148,6 +150,6 @@ class Modules {
 
 }
 
-
+Modules.inject = [ 'injector' ];
 
 export default Modules;
