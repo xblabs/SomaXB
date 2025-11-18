@@ -16,6 +16,7 @@ interface ModuleClass {
 }
 
 export interface ModuleInstance {
+    [key: string]: any;
     init?(): void;
     dispose?(): void;
 }
