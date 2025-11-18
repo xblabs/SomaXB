@@ -50,6 +50,8 @@ class Commands {
 	emitter
 	injector
 
+	static inject = ["emitter", "injector"];
+
 	constructor( emitter, injector )
 	{
 		this.list = {};

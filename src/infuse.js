@@ -6,6 +6,9 @@ var STRIP_COMMENTS = /((\/\/.*$)|(\/\*[\s\S]*?\*\/))/mg;
 
 const infuse = {}
 
+
+const depsCache = {}
+
 function contains( arr, value )
 {
 	var i = arr.length;
@@ -25,7 +28,7 @@ infuse.errors = {
 	MAPPING_ALREADY_EXISTS: '[Error Injector.MAPPING_ALREADY_EXISTS] This mapping already exists, with property: ',
 	CREATE_INSTANCE_INVALID_PARAM: '[Error Injector.CREATE_INSTANCE_INVALID_PARAM] Invalid parameter, a function is expected.',
 	NO_MAPPING_FOUND: '[Error Injector.NO_MAPPING_FOUND] No mapping found',
-	INJECT_INSTANCE_IN_ITSELF_PROPERTY: '[Error Injector.INJECT_INSTANCE_IN_ITSELF_PROPERTY] A matching property has been found in the target, you can\'t inject an instance in itself.',
+	INJECT_INSTANCE_IN_ITSELF_PROPERTY: '[Error Injector.INJECT_INSTANCE_IN_ITSELF_PROPERTY] A matching property `%p` has been found in the target, you can\'t inject an instance in itself.',
 	INJECT_INSTANCE_IN_ITSELF_CONSTRUCTOR: '[Error Injector.INJECT_INSTANCE_IN_ITSELF_CONSTRUCTOR] A matching constructor parameter has been found in the target, you can\'t inject an instance in itself.',
 	DEPENDENCIES_MISSING_IN_STRICT_MODE: '[Error Injector.DEPENDENCIES_MISSING_IN_STRICT_MODE] An "inject" property (array) that describes the dependencies is missing in strict mode.',
 	DEPENDENCIES_MISSING_IN_STRICT_MODE_CONSTRUCTOR_INJECTION: '[Error Injector.DEPENDENCIES_MISSING_IN_STRICT_MODE_CONSTRUCTOR_INJECTION] An "inject" property (array) that describes the dependencies of constructor is missing in strict mode.',
@@ -37,6 +40,7 @@ var MappingVO = function( prop, value, cl, singleton ) {
 	this.value = value;
 	this.cl = cl;
 	this.singleton = singleton || false;
+	this.singletonPostConstructed = false;
 };
 
 var validateProp = function( prop ) {
@@ -72,7 +76,7 @@ var validateConstructorInjectionLoop = function( name, cl ) {
 
 var validatePropertyInjectionLoop = function( name, target ) {
 	if( target.hasOwnProperty( name ) ) {
-		throw new Error( infuse.errors.INJECT_INSTANCE_IN_ITSELF_PROPERTY );
+		throw new Error( infuse.errors.INJECT_INSTANCE_IN_ITSELF_PROPERTY.replace( '%p', name ) );
 	}
 };
 
@@ -138,7 +142,7 @@ class Injector {
 	mapClass( prop, cl, singleton )
 	{
 		if( this.mappings[prop] ) {
-			throw new Error( infuse.errors.MAPPING_ALREADY_EXISTS + prop );
+			throw new Error( infuse.errors.MAPPING_ALREADY_EXISTS + prop + "  in " + ( cl.name ?? 'n/a' ) );
 		}
 		validateProp( prop );
 		validateClass( prop, cl );
@@ -222,9 +226,9 @@ class Injector {
 		}
 		var params = infuse.getDependencies( TargetClass );
 		if( this.strictMode && !TargetClass.hasOwnProperty( 'inject' ) ) {
-			throw new Error( infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE );
+			throw new Error( infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE + " : " + TargetClass.name  + "(" + params.join( ', ' ) + ")" );
 		} else if( this.strictModeConstructorInjection && params.length > 0 && !TargetClass.hasOwnProperty( 'inject' ) ) {
-			throw new Error( infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE_CONSTRUCTOR_INJECTION );
+			throw new Error( infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE_CONSTRUCTOR_INJECTION + " : " + TargetClass.name + "(" + params.join( ', ' ) + ")" );
 		}
 		var args = [null];
 		for( var i = 0, l = params.length; i < l; i++ ) {
@@ -256,17 +260,40 @@ class Injector {
 		if( this.parent ) {
 			this.parent.inject( target, true );
 		}
-		for( var name in this.mappings ) {
-			if( this.mappings.hasOwnProperty( name ) ) {
-				var vo = this.getMappingVo( name );
-				if( target.hasOwnProperty( vo.prop ) || (target.constructor && target.constructor.prototype && target.constructor.prototype.hasOwnProperty( vo.prop )) ) {
-					target[name] = this.getInjectedValue( vo, name );
+
+		let directInjectDeps = infuse.getExplicitInjectDependencies( target.constructor )
+		// if( directInjectDeps.length ) {
+		// 	for( var i = 0, l = directInjectDeps.length; i < l; i++ ) {
+		// 		var name = directInjectDeps[i];
+		// 		var vo = this.getMappingVo( name );
+		// 		if( !!vo ) {
+		// 			var val = this.getInjectedValue( vo, name );
+		// 			target[name] = val;
+		// 		} else {
+		// 			if( this.throwOnMissing ) {
+		// 				throw new Error( formatMappingError( name, target.constructor.name ) );
+		// 			}
+		// 		}
+		// 	}
+		// } else {
+			for( var name in this.mappings ) {
+				if( this.mappings.hasOwnProperty( name ) ) {
+					var vo = this.getMappingVo( name );
+					if(
+						target.hasOwnProperty( vo.prop ) ||
+						typeof target[ vo.prop ] !== 'undefined' ||
+						(target.constructor && target.constructor.prototype && target.constructor.prototype.hasOwnProperty( vo.prop )) ||
+						(typeof target.constructor.inject !== 'undefined' && target.constructor.inject.includes( vo.prop ))
+					) {
+						target[name] = this.getInjectedValue( vo, name );
+					} else {
+						let tpm = true;
+					}
 				}
 			}
-		}
-		if( typeof target.postConstruct === 'function' && !isParent ) {
-			target.postConstruct();
-		}
+		// }
+
+
 		return this;
 	}
 
@@ -290,6 +317,9 @@ class Injector {
 		if( injectee ) {
 			validatePropertyInjectionLoop( name, injectee );
 			this.inject( injectee );
+			if( typeof injectee.postConstruct === 'function' ) {
+				injectee.postConstruct();
+			}
 		}
 		return val;
 	}
@@ -297,6 +327,22 @@ class Injector {
 	createInstance() {
 		var instance = this.instantiate.apply( this, arguments );
 		this.inject( instance );
+
+		// if( arguments.length > 1 ) {
+		// 	var vo = arguments[1];
+		// }else if( arguments.length === 1 ) {
+		// 	var vo = arguments[0];
+		// }
+		if( typeof instance.postConstruct === 'function' ) {
+			// if( vo.singleton && !vo.singletonPostConstructed ) {
+			// 	instance.postConstruct();
+			// 	vo.singletonPostConstructed = true;
+			// } else if( !vo.singleton ) {
+			// 	instance.postConstruct();
+			// }
+			instance.postConstruct();
+		}
+
 		return instance;
 	}
 
@@ -329,6 +375,18 @@ class Injector {
 
 }
 
+infuse.getExplicitInjectDependencies = function( cl ) {
+	//console.log( cl.constructor.inject, cl.inject ) // TODO remove
+	if( typeof cl.inject !== 'undefined' && Object.prototype.toString.call( cl.inject ) === '[object Array]' && cl.inject.length > 0 ) {
+		let deps = cl.inject;
+		//const sym = Symbol( cl )
+		//depsCache[sym] = deps
+		return deps
+	}
+	return []
+}
+
+
 infuse.getDependencies = function( cl ) {
 	var args = [];
 	var deps;
@@ -338,9 +396,9 @@ infuse.getDependencies = function( cl ) {
 		args.push( name );
 	}
 
-	if( cl.hasOwnProperty( 'inject' ) && Object.prototype.toString.call( cl.inject ) === '[object Array]' && cl.inject.length > 0 ) {
-		deps = cl.inject;
-	}
+	deps = infuse.getExplicitInjectDependencies( cl )
+
+	//console.log( cl.prototype.constructor.name, deps )
 
 	var clStr = cl.toString().replace( STRIP_COMMENTS, '' );
 
@@ -365,6 +423,7 @@ infuse.getDependencies = function( cl ) {
 		}
 	}
 
+	//console.log( cl.prototype.constructor.name, args, deps )
 	return args;
 };
 
