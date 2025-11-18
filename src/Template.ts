@@ -405,7 +405,7 @@ function updateScopeWithRepeaterData(repeaterValue: string, scope: ScopeData, da
 }
 
 function getWatcherValue(exp: Expression, newValue: any): any {
-    const node = exp.node || exp.attribute?.node;
+    const node = exp.node || (exp.attribute?.node);
     if (!node) return newValue;
 
     const watchers = node.template?.watchers;
@@ -528,7 +528,7 @@ function getScopeDepth(value: string): number {
     return !matches ? 0 : matches.length;
 }
 
-function addAttribute(node: Node, name: string, value: string): Attribute | undefined {
+function addAttribute(node: TemplateNode, name: string, value: string): Attribute | undefined {
     let attr: Attribute | undefined;
     node.attributes = node.attributes || [];
     if (name === settings.attributes.skip) {
@@ -566,7 +566,7 @@ function addAttribute(node: Node, name: string, value: string): Attribute | unde
     return attr;
 }
 
-function getNodeFromElement(element: Element, scope: ScopeData): Node {
+function getNodeFromElement(element: Element, scope: ScopeData): TemplateNode {
     const node = new TemplateNode(element, scope);
     node.previousSibling = element.previousSibling;
     node.nextSibling = element.nextSibling;
@@ -617,12 +617,12 @@ function isElementValid(element: ChildNode): boolean {
     return true;
 }
 
-function compile(template: Template, element: ChildNode, parent?: Node, nodeTarget?: Node): Node | undefined {
+function compile(template: Template, element: ChildNode, parent?: TemplateNode, nodeTarget?: TemplateNode): TemplateNode | undefined {
     if (!isElementValid(element)) {
         return;
     }
     // get node
-    let node: Node;
+    let node: TemplateNode;
     if (!nodeTarget) {
         node = getNodeFromElement(element as Element, parent ? parent.scope : new Scope(helpersScopeObject)._createChild!());
     } else {
@@ -724,7 +724,7 @@ function renderNodeRepeater(node: TemplateNode): void {
     }
 }
 
-function compileClone(node: Node, newNode: Node): Node | undefined {
+function compileClone(node: TemplateNode, newNode: TemplateNode): TemplateNode | undefined {
     if (!isElementValid(newNode.element)) {
         return;
     }
@@ -741,7 +741,7 @@ function compileClone(node: Node, newNode: Node): Node | undefined {
     // children
     let child = (node.element as Element).firstChild;
     let newChild = (newNode.element as Element).firstChild;
-    let newChildNode: Node | undefined;
+    let newChildNode: TemplateNode | undefined;
     // loop
     while (child && newChild) {
         const childNode = node.getNode(child);
@@ -762,7 +762,7 @@ function compileClone(node: Node, newNode: Node): Node | undefined {
     return newChildNode;
 }
 
-function cloneRepeaterNode(element: Element, node: Node): Node {
+function cloneRepeaterNode(element: Element, node: TemplateNode): TemplateNode {
     const newNode = new TemplateNode(element, node.scope._createChild!());
     newNode.template = node.template;
     newNode.parent = node;
@@ -772,7 +772,7 @@ function cloneRepeaterNode(element: Element, node: Node): Node {
     return newNode;
 }
 
-function appendRepeaterElement(previousElement: Element | undefined, node: Node, newElement: Element): void {
+function appendRepeaterElement(previousElement: Element | undefined, node: TemplateNode, newElement: Element): void {
     if (!previousElement) {
         if (node.element.previousSibling) {
             insertAfter(node.element.previousSibling, newElement);
@@ -786,7 +786,7 @@ function appendRepeaterElement(previousElement: Element | undefined, node: Node,
     }
 }
 
-function createRepeaterChild(node: Node, count: number, data: any, indexVar: string, indexVarValue: any, previousElement?: Element): Element {
+function createRepeaterChild(node: TemplateNode, count: number, data: any, indexVar: string, indexVarValue: any, previousElement?: Element): Element {
     const existingChild = node.childrenRepeater[count];
     if (!existingChild) {
         const newElement = (node.element as Element).cloneNode(true) as Element;
@@ -810,10 +810,10 @@ function createRepeaterChild(node: Node, count: number, data: any, indexVar: str
 
 class Scope {
     constructor(data?: any) {
-        return this.createObject(data);
+        return this.createObject(data) as any;
     }
 
-    private createObject(data?: any): ScopeData {
+    createObject(data?: any): ScopeData {
         const self = this;
         const obj: ScopeData = data || {};
         obj._parent = null;
@@ -833,7 +833,7 @@ class Scope {
 }
 
 class TemplateNode {
-    element: Element | Text;
+    element: any; // Element | Text but we use any to avoid type conflicts
     scope: ScopeData;
     attributes: Attribute[] | null = null;
     value: string | null = null;
@@ -852,7 +852,7 @@ class TemplateNode {
     eventHandlers: { [type: string]: EventHandler } = {};
     html = false;
 
-    constructor(element: Element | Text, scope: ScopeData) {
+    constructor(element: any, scope: ScopeData) {
         this.element = element;
         this.scope = scope;
 
@@ -1045,13 +1045,13 @@ class TemplateNode {
 class Attribute {
     name: string;
     value: string;
-    node: Node;
+    node: TemplateNode;
     interpolationName: Interpolation;
     interpolationValue: Interpolation;
     invalidate = false;
     previousName?: string;
 
-    constructor(name: string, value: string, node: Node) {
+    constructor(name: string, value: string, node: TemplateNode) {
         this.name = name;
         this.value = value;
         this.node = node;
@@ -1094,7 +1094,7 @@ class Attribute {
         const element = this.node.element as Element;
 
         // normal attribute
-        function renderAttribute(name: string, value: any, node: Node): void {
+        function renderAttribute(name: string, value: any, node: TemplateNode): void {
             const el = node.element as any;
             if (name === 'value' && el.value !== undefined) {
                 el.value = value;
@@ -1229,10 +1229,10 @@ class Interpolation {
         this.value = node && !isTextNode(node.element) ? trim(value) : value;
         this.node = node;
         this.attribute = attribute;
-        const parts = this.value.match(regex.sequence);
+        const parts = this.value.match(regex.sequence!);
         if (parts) {
             for (let i = 0, l = parts.length; i < l; i++) {
-                if (parts[i].match(regex.token)) {
+                if (parts[i].match(regex.token!)) {
                     const exp = new Expression(trimTokens(parts[i]), this.node, this.attribute);
                     this.sequence.push(exp);
                     this.expressions.push(exp);
@@ -1659,13 +1659,13 @@ function renderAllTemplates(): void {
 
 function appendHelpers(obj: any): any {
     if (obj === null) {
-        helpersObject = {};
-        helpersScopeObject = {};
+        helpersObject = {} as any;
+        helpersScopeObject = {} as any;
     }
     if (isDefined(obj) && isObject(obj)) {
         for (const key in obj) {
             if (obj.hasOwnProperty(key)) {
-                helpersObject[key] = helpersScopeObject[key] = obj[key];
+                helpersObject[key] = (helpersScopeObject as any)[key] = (obj as any)[key];
             }
         }
     }
