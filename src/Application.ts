@@ -34,7 +34,10 @@ class Application
 	}
 	get commands(): Commands
 	{
-		return this._commands || new Commands()
+		if (!this._commands) {
+			throw new Error('Commands not initialized. Call setup() first.');
+		}
+		return this._commands;
 	}
 
 	get mediators(): Mediators
@@ -44,7 +47,10 @@ class Application
 
 	get modules(): Modules
 	{
-		return this._modules || new Modules()
+		if (!this._modules) {
+			throw new Error('Modules not initialized. Call setup() first.');
+		}
+		return this._modules;
 	}
 
 
