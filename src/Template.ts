@@ -257,7 +257,7 @@ function setRegEX(nonEscapedValue: string, isStartToken: boolean): void {
     let endSequence = '';
     const ts = isStartToken ? nonEscapedValue : unescapedCurrentStartToken;
     if (ts.length > 1) {
-        endSequence = '|\\' + ts.substr(0, 1) + '(?!\\' + ts.substr(1, 1) + ')[^' + ts.substr(0, 1) + ']*';
+        endSequence = '|\\' + ts[0] + '(?!\\' + ts[1] + ')[^' + ts[0] + ']*';
     }
     regex.sequence = new RegExp(tokens.start() + '.+?' + tokens.end() + '|[^' + tokens.start() + ']+' + endSequence, 'g');
     regex.token = new RegExp(tokens.start() + '.*?' + tokens.end(), 'g');
@@ -270,7 +270,7 @@ function trim(value: string): string {
 
 function trimQuotes(value: string): string {
     if (regex.string.test(value)) {
-        return value.substr(1, value.length - 2);
+        return value.slice(1, -1);
     }
     return value;
 }
@@ -574,12 +574,11 @@ function getNodeFromElement(element: Element, scope: ScopeData): TemplateNode {
     const attrs = element.attributes;
     for (let j = 0, jj = attrs && attrs.length; j < jj; j++) {
         const attr = attrs[j];
-        if (attr.specified || attr.name === 'value') {
-            const newAttr = addAttribute(node, attr.name, attr.value);
-            if (events[attr.name] && newAttr) {
-                if (events[attr.name] && !node.isRepeaterChild) {
-                    eventsArray.push({ name: events[attr.name], value: attr.value, attr: newAttr });
-                }
+        // Modern browsers only include specified attributes in element.attributes
+        const newAttr = addAttribute(node, attr.name, attr.value);
+        if (events[attr.name] && newAttr) {
+            if (events[attr.name] && !node.isRepeaterChild) {
+                eventsArray.push({ name: events[attr.name], value: attr.value, attr: newAttr });
             }
         }
     }
@@ -661,7 +660,7 @@ function updateScopeWithData(scope: ScopeData, data: any): void {
 function clearScope(scope: ScopeData): void {
     for (const key in scope) {
         if (scope.hasOwnProperty(key)) {
-            if (key.substr(0, 1) !== '_') {
+            if (!key.startsWith('_')) {
                 scope[key] = null;
                 delete scope[key];
             }
@@ -1514,15 +1513,14 @@ function parseAttributes(element: Element, object: any): void {
     const attrs = element.attributes;
     for (let j = 0, jj = attrs && attrs.length; j < jj; j++) {
         const attr = attrs[j];
-        if (attr.specified) {
-            const name = attr.name;
-            const value = attr.value;
-            if (events[name]) {
-                const handler = getHandlerFromPattern(object, value);
-                if (handler && isFunction(handler)) {
-                    addEvent(element, events[name], handler);
-                    eventStore.push({ element: element, type: events[name], handler: handler });
-                }
+        // Modern browsers only include specified attributes in element.attributes
+        const name = attr.name;
+        const value = attr.value;
+        if (events[name]) {
+            const handler = getHandlerFromPattern(object, value);
+            if (handler && isFunction(handler)) {
+                addEvent(element, events[name], handler);
+                eventStore.push({ element: element, type: events[name], handler: handler });
             }
         }
     }
