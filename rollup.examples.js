@@ -47,5 +47,10 @@ export default [
     createConfig(
         'examples/router/ts/app.ts',
         'examples/router/dist/app.js'
+    ),
+    // Snake example
+    createConfig(
+        'examples/snake/ts/main.ts',
+        'examples/snake/dist/main.js'
     )
 ];
