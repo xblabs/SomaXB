@@ -1,6 +1,16 @@
-import {Signal, SignalBinding} from "signals";
-import {Injector} from "./infuse";
-import Emitter from "./Emitter";
+import { Signal, SignalBinding } from 'signals';
+
+interface Injector {
+    createChild(): Injector;
+    mapValue(prop: string, val: any): Injector;
+    createInstance(CommandClass: any, ...args: any[]): any;
+    dispose(): void;
+}
+
+interface Emitter {
+    addListener(id: string, handler: Function, scope: any): SignalBinding;
+    getSignal(id: string): Signal | undefined;
+}
 
 interface CommandClass {
     new(...args: any[]): Command;
@@ -33,11 +43,7 @@ function interceptorHandler(
     childInjector.dispose();
 }
 
-function addInterceptor(
-    scope: Commands,
-    id: string,
-    CommandClass: CommandClass
-): SignalBinding {
+function addInterceptor(scope: Commands, id: string, CommandClass: CommandClass): SignalBinding {
     const binding = scope.emitter.addListener(id, interceptorHandler, scope);
     binding.params = [scope.injector, id, CommandClass, scope.emitter.getSignal(id), binding];
     return binding;
@@ -66,10 +72,12 @@ class Commands {
     emitter: Emitter;
     injector: Injector;
 
-    constructor(emitter?: Emitter, injector?: Injector) {
+    static inject = ["emitter", "injector"];
+
+    constructor(emitter: Emitter, injector: Injector) {
         this.list = {};
-        this.emitter = emitter!;
-        this.injector = injector!;
+        this.emitter = emitter;
+        this.injector = injector;
     }
 
     add(id: string, CommandClass: CommandClass): CommandOptions {
@@ -87,6 +95,7 @@ class Commands {
 
     remove(id: string): void {
         if (this.list[id]) {
+            this.list[id] = undefined as any;
             delete this.list[id];
             removeInterceptor(this, id);
         }
@@ -97,6 +106,8 @@ class Commands {
             this.remove(id);
         }
         this.list = {};
+        this.emitter = null as any;
+        this.injector = undefined as any;
     }
 }
 

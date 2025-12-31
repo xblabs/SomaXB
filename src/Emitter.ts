@@ -2,7 +2,7 @@ import {Signal, SignalBinding} from "signals"
 import {SignalPool,SignalEvent} from "./types"
 
 
-export default class Emitter
+export default class Emitter__ // TODO IMPORTANT DEACTIVATED IN FAVOOUR OF CODE HIGHLIGHTUNG THE LIB'S SINGLETON
 {
 
     //private static _instance: Emitter;
@@ -63,29 +63,20 @@ export default class Emitter
     }
 
 
-
     dispatch( id:string, data?: SignalEvent, useIdInParams:boolean = true  ): void
     {
         const signal = this.signals[id];
         if( signal ) {
-            if( !data && useIdInParams ) {
-                // Create new data object with signalType
-                data = {signalType: id};
-            } else if( data && useIdInParams && Object.prototype.toString.call(data) === '[object Object]' && !data.hasOwnProperty('signalType') ) {
-                // Inject signalType into existing data object
-                data.signalType = id;
-            }
-
-            // Dispatch once with or without data
             if( data ) {
-                signal.dispatch(data);
+                if( useIdInParams && Object.prototype.toString.call(data) === '[object Object]' && !data.hasOwnProperty('signalType')  ) {
+                    data.signalType = id
+                }
+                signal.dispatch.apply( signal, [ data ] );
             } else {
                 signal.dispatch();
             }
         }
     }
-
-
 
     dispose()
     {

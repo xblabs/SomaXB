@@ -1,108 +1,135 @@
-import {Injector} from "./infuse";
+//import {Injector} from "./infuse";
+import Injector from "./Injector"
 import Emitter from './Emitter';
 import Commands from './Commands';
 import Mediators from './Mediators';
 import Modules from './Modules';
+//import utils from './utils';
+
 
 class Application
 {
-	#injector!: Injector;
-	#emitter!: Emitter;
-	#commands!: Commands;
-	#mediators!: Mediators;
-	#modules!: Modules;
+	protected _injector?:Injector
+
+	protected _emitter?:Emitter
+
+	protected _commands?:Commands
+
+	protected _mediators?:Mediators
+
+	protected _modules?:Modules
 
 	get emitter(): Emitter
 	{
-		return this.#emitter;
+		return this._emitter || new Emitter()
 	}
 
 	get injector(): Injector
 	{
-		return this.#injector;
+		return this._injector || new Injector()
 	}
 
-	set commands(value: Commands) {
-		this.#commands = value;
+	set commands(value:Commands) {
+		this._commands = value;
 	}
-
 	get commands(): Commands
 	{
-		return this.#commands;
+		if (!this._commands) {
+			throw new Error('Commands not initialized. Call setup() first.');
+		}
+		return this._commands;
 	}
 
 	get mediators(): Mediators
 	{
-		return this.#mediators;
+		return this._mediators || new Mediators()
 	}
 
 	get modules(): Modules
 	{
-		return this.#modules;
+		if (!this._modules) {
+			throw new Error('Modules not initialized. Call setup() first.');
+		}
+		return this._modules;
 	}
 
 
 	constructor()
 	{
-		this.setup();
-		this.init();
+		this.setup()
+		this.init()
+		this.initDone()
 	}
 
-	setup()
+	protected setupEmitter()
+	{
+		if( this._injector ) {
+			this._injector.mapClass( 'emitter', Emitter, true )
+			this._emitter = this._injector.getValue( 'emitter' ) as Emitter
+		}
+	}
+
+
+	protected setup()
 	{
 		// create injector
-		this.#injector = new Injector();
+		this._injector = new Injector();
 
-		this.#injector.throwOnMissing = false;
-		this.#injector.mapValue( 'injector', this.#injector );
+		this._injector.throwOnMissing = false;
+		this._injector.mapValue( 'injector', this._injector );
 		// instance
-		this.#injector.mapValue( 'instance', this );
-		// emitter
-		this.#injector.mapClass( 'emitter', Emitter, true );
+		this._injector.mapValue( 'instance', this );
 
-		this.#emitter = this.#injector.getValue( 'emitter' ) as Emitter;
+		this.setupEmitter()
 
 		// commands
-		this.#injector.mapClass( 'commands', Commands, true );
-		this.#commands = this.#injector.getValue( 'commands' );
+		this._injector.mapClass( 'commands', Commands, true );
+		this._commands = this._injector.getValue( 'commands' );
 		// mediators
-		this.#injector.mapClass( 'mediators', Mediators, true );
-		this.#mediators = this.#injector.getValue( 'mediators' );
+		this._injector.mapClass( 'mediators', Mediators, true );
+		this._mediators = this._injector.getValue( 'mediators' );
 		// modules
-		this.#injector.mapClass( 'modules', Modules, true );
-		this.#modules = this.#injector.getValue( 'modules' );
-
+		this._injector.mapClass( 'modules', Modules, true );
+		this._modules = this._injector.getValue( 'modules' );
 
 	}
 
-	init()
+	protected init()
 	{
+
+	}
+
+	protected initDone() {
+
 	}
 
 
 	dispose()
 	{
-		if (this.#injector) {
-			this.#injector.dispose();
+		if( this._injector ) {
+			this._injector.dispose();
 		}
-		if (this.#emitter) {
-			this.#emitter.dispose();
+		if( this.emitter ) {
+			this.emitter.dispose();
 		}
-		if (this.#commands) {
-			this.#commands.dispose();
+		if( this._commands ) {
+			this._commands.dispose();
 		}
-		if (this.#mediators) {
-			this.#mediators.dispose();
+		if( this._mediators ) {
+			this._mediators.dispose();
 		}
-		if (this.#modules) {
-			this.#modules.dispose();
+		if( this._modules ) {
+			this._modules.dispose();
 		}
-		(this.#injector as any) = undefined;
-		(this.#emitter as any) = undefined;
-		(this.#commands as any) = undefined;
-		(this.#mediators as any) = undefined;
-		(this.#modules as any) = undefined;
+		this._injector = undefined;
+		this._emitter = undefined
+		this._commands = undefined
+		this._mediators = undefined
+		this._modules = undefined
+
 	}
+
+
 }
 
 
