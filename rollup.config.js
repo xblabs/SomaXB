@@ -10,7 +10,7 @@ const banner = `/* soma - v${pkg.version} - ${date} - https://github.com/soundst
 const production = !process.env.ROLLUP_WATCH;
 
 export default [
-	// browser
+	// ESM build
 	{
         input: 'index.ts',
         external: [
@@ -20,7 +20,6 @@ export default [
 			name: 'soma',
 			file: pkg.browser,
 			format: 'esm',
-			//dir: 'dist/',
 			banner,
             globals: {
                 'signals': 'signals'
@@ -33,6 +32,53 @@ export default [
 				sourceMap: !production,
 				inlineSources: !production
 			} ),
+		]
+	},
+	// UMD build for browser (includes signals)
+	{
+        input: 'index.ts',
+		output: {
+			name: 'soma',
+			file: 'dist/soma.umd.js',
+			format: 'umd',
+			banner,
+        },
+		plugins: [
+			resolve(),
+            commonjs(),
+			typescript( {
+				sourceMap: !production,
+				inlineSources: !production
+			} ),
+		]
+	},
+	// UMD minified
+	{
+        input: 'index.ts',
+		output: {
+			name: 'soma',
+			file: 'dist/soma.umd.min.js',
+			format: 'umd',
+			banner,
+        },
+		plugins: [
+			resolve(),
+            commonjs(),
+			typescript( {
+				sourceMap: !production,
+				inlineSources: !production
+			} ),
+			terser({
+				output: {
+					comments: function(node, comment) {
+						var text = comment.value;
+						var type = comment.type;
+						if (type == "comment2") {
+							return /github.com\/soundstep\/soma/i.test(text);
+						}
+					}
+				}
+			})
 		]
 	},
 	// browser minified
