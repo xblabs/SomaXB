@@ -43,7 +43,7 @@ const infuse: InfuseType = {
         const args: string[] = [];
         let deps: string[] | undefined;
 
-        function extractName(all: string, underscore: string, name: string): void {
+        function extractName(_all: string, _underscore: string, name: string): void {
             args.push(name);
         }
 
@@ -63,14 +63,20 @@ const infuse: InfuseType = {
             throw new Error(infuse.errors.DEPENDENCIES_INVALID_TARGET);
         }
 
-        if (argsFlat) {
+        if (argsFlat && argsFlat[1]) {
             const spl = argsFlat[1].split(FN_ARG_SPLIT);
             for (let i = 0, l = spl.length; i < l; i++) {
-                // removes default es6 values
-                const cArg = spl[i].split('=')[0].replace(/\s/g, '');
-                // Only override arg with non-falsey deps value at same key
-                const arg = (deps && deps[i]) ? deps[i] : cArg;
-                arg.replace(FN_ARG, extractName as any);
+                const splItem = spl[i];
+                if (splItem) {
+                    // removes default es6 values
+                    const cArg = splItem.split('=')[0]?.replace(/\s/g, '') || '';
+                    // Only override arg with non-falsey deps value at same key
+                    const depItem = deps?.[i];
+                    const arg = depItem || cArg;
+                    if (arg) {
+                        arg.replace(FN_ARG, extractName as any);
+                    }
+                }
             }
         }
 

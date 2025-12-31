@@ -11,7 +11,7 @@ interface ModuleDefinition {
     Module?: ModuleClass;
 }
 
-interface ModuleInstance {
+export interface ModuleInstance {
     init?(): void;
     dispose?(): void;
 }
