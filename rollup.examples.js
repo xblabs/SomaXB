@@ -52,5 +52,20 @@ export default [
     createConfig(
         'examples/snake/ts/main.ts',
         'examples/snake/dist/main.js'
+    ),
+    // Todo-light example
+    createConfig(
+        'examples/todo-light/ts/app.ts',
+        'examples/todo-light/dist/app.js'
+    ),
+    // Todo-hash example
+    createConfig(
+        'examples/todo-hash/ts/app.ts',
+        'examples/todo-hash/dist/app.js'
+    ),
+    // Todo example
+    createConfig(
+        'examples/todo/ts/app.ts',
+        'examples/todo/dist/app.js'
     )
 ];
