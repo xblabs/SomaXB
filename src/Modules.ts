@@ -1,14 +1,14 @@
 import {infuse, Injector} from './infuse';
 import utils from './utils';
 
-interface ModuleClass<T = any> {
-    (...args: any[]): T;
+interface ModuleClass {
+    (this: any, ...args: any[]): any;
     id: string;
 }
 
-interface ModuleDefinition<T = any> {
-    module?: ModuleClass<T>;
-    Module?: ModuleClass<T>;
+interface ModuleDefinition {
+    module?: ModuleClass;
+    Module?: ModuleClass;
 }
 
 interface ModuleInstance {
@@ -25,26 +25,26 @@ class Modules {
         this.list = {};
     }
 
-    create<T extends ModuleInstance>(
-        module: ModuleClass<T> | ModuleDefinition<T>,
+    create(
+        module: ModuleClass | ModuleDefinition,
         args?: any[],
         register?: boolean,
         useChildInjector?: boolean
-    ): T {
-        let moduleInstance: T;
-        let moduleClass: ModuleClass<T>;
+    ): any {
+        let moduleInstance: any;
+        let moduleClass: ModuleClass;
         const shouldRegister = register !== false;
         const shouldUseChildInjector = useChildInjector === true;
 
         // register module
-        const add = (list: { [id: string]: any }, id: string, instance: T): void => {
+        const add = (list: { [id: string]: any }, id: string, instance: any): void => {
             if (!list[id] && shouldRegister) {
                 list[id] = instance;
             }
         };
 
         // validate module
-        const validate = (moduleClass: ModuleClass<T>): boolean => {
+        const validate = (moduleClass: ModuleClass): boolean => {
             let valid = true;
             if (moduleClass === undefined || moduleClass === null) {
                 valid = false;
@@ -55,7 +55,7 @@ class Modules {
         };
 
         // create module instance
-        const instantiate = (injector: Injector, value: ModuleClass<T>, args: any[] = []): T => {
+        const instantiate = (injector: Injector, value: ModuleClass, args: any[] = []): any => {
             const params = infuse.getDependencies(value);
 
             // add module function
@@ -82,19 +82,20 @@ class Modules {
             // add arguments
             moduleArgs = moduleArgs.concat(args);
 
-            return injector.createInstance.apply(injector, moduleArgs) as T;
+            const [targetClass, ...instanceArgs] = moduleArgs;
+            return injector.createInstance(targetClass, ...instanceArgs);
         };
 
         // find module class
         if (utils.is.func(module)) {
             // module function is sent directly
-            moduleClass = module as ModuleClass<T>;
-        } else if (utils.is.object(module) && utils.is.func((module as ModuleDefinition<T>).module)) {
+            moduleClass = module as ModuleClass;
+        } else if (utils.is.object(module) && utils.is.func((module as ModuleDefinition).module)) {
             // module function is contained in an object, on a "module"
-            moduleClass = (module as ModuleDefinition<T>).module!;
-        } else if (utils.is.object(module) && utils.is.func((module as ModuleDefinition<T>).Module)) {
+            moduleClass = (module as ModuleDefinition).module!;
+        } else if (utils.is.object(module) && utils.is.func((module as ModuleDefinition).Module)) {
             // module function is coming from an ES6 import as a Module property
-            moduleClass = (module as ModuleDefinition<T>).Module!;
+            moduleClass = (module as ModuleDefinition).Module!;
         } else {
             throw new Error('[Modules] Error: Could not create module. The module must be a function or an object containing a module property referencing a function.');
         }
@@ -107,7 +108,7 @@ class Modules {
         // instantiate
         if (this.has(moduleClass.id)) {
             // module already exists
-            moduleInstance = this.get(moduleClass.id) as T;
+            moduleInstance = this.get(moduleClass.id);
         } else {
             let injectorTarget = this.injector;
             if (shouldUseChildInjector) {
