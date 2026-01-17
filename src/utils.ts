@@ -33,11 +33,13 @@ utils.applyProperties = (target: any, extension: any, bindToExtension?: boolean,
     }
     else {
         for (const prop in extension) {
-            if (bindToExtension && typeof extension[prop] === 'function') {
-                target[prop] = extension[prop].bind(extension);
-            }
-            else {
-                target[prop] = extension[prop];
+            if (target[prop] === undefined || target[prop] === null) {
+                if (bindToExtension && typeof extension[prop] === 'function') {
+                    target[prop] = extension[prop].bind(extension);
+                }
+                else {
+                    target[prop] = extension[prop];
+                }
             }
         }
     }
