@@ -33,6 +33,7 @@ function interceptorHandler(
     ...args: any[]
 ): void {
     const childInjector = injector.createChild();
+    childInjector.mapValue('injector', childInjector);
     childInjector.mapValue('id', id);
     childInjector.mapValue('signal', signal);
     childInjector.mapValue('binding', binding);

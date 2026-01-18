@@ -67,7 +67,7 @@ export default class Emitter__ // TODO IMPORTANT DEACTIVATED IN FAVOOUR OF CODE 
     {
         const signal = this.signals[id];
         if( signal ) {
-            if( data ) {
+            if( data !== undefined ) {
                 if( useIdInParams && Object.prototype.toString.call(data) === '[object Object]' && !data.hasOwnProperty('signalType')  ) {
                     data.signalType = id
                 }
