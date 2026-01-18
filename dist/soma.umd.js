@@ -1,4 +1,4 @@
-/* soma - v3.0.4 - 31/12/2025 - https://github.com/soundstep/soma */
+/* soma - v4.0.0 - 18/01/2026 - https://github.com/soundstep/soma */
 (function (global, factory) {
     typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
     typeof define === 'function' && define.amd ? define(['exports'], factory) :
@@ -174,7 +174,12 @@
             if (vo.cl) {
                 if (vo.singleton) {
                     if (!vo.value) {
-                        vo.value = this.createInstance(vo.cl, ...args);
+                        // Set value before inject to support circular dependencies
+                        vo.value = this.instantiate(vo.cl, ...args);
+                        this.inject(vo.value);
+                        if (typeof vo.value.postConstruct === 'function') {
+                            vo.value.postConstruct();
+                        }
                     }
                     return vo.value;
                 }
@@ -205,35 +210,79 @@
                 throw new Error(infuse.errors.CREATE_INSTANCE_INVALID_PARAM);
             }
             const params = infuse.getDependencies(TargetClass);
-            if (this.strictMode && !TargetClass.hasOwnProperty('inject')) {
+            const injectDeps = infuse.getExplicitInjectDependencies(TargetClass);
+            const injectCount = injectDeps.length;
+            const hasExplicitInject = TargetClass.hasOwnProperty('inject');
+            if (this.strictMode && !hasExplicitInject) {
                 throw new Error(infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE + " : " + TargetClass.name + "(" + params.join(', ') + ")");
             }
-            else if (this.strictModeConstructorInjection && params.length > 0 && !TargetClass.hasOwnProperty('inject')) {
+            else if (this.strictModeConstructorInjection && params.length > 0 && !hasExplicitInject) {
                 throw new Error(infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE_CONSTRUCTOR_INJECTION + " : " + TargetClass.name + "(" + params.join(', ') + ")");
             }
             const constructorArgs = [null];
+            const nonInjectParamCount = params.length - injectCount;
+            // Determine if args should override inject slots or fill non-inject slots
+            const argsOverrideInject = args.length > nonInjectParamCount || nonInjectParamCount === 0;
             for (let i = 0, l = params.length; i < l; i++) {
-                if (args.length > i && args[i] !== undefined && args[i] !== null) {
-                    // argument found
-                    constructorArgs.push(args[i]);
-                }
-                else {
-                    const name = params[i];
-                    // no argument found
-                    const vo = this.getMappingVo(name);
-                    if (!!vo) {
-                        // found mapping
-                        const val = this.getInjectedValue(vo, name);
-                        constructorArgs.push(val);
+                if (argsOverrideInject) {
+                    // Args are positional, can override inject slots
+                    if (args.length > i) {
+                        // Arg provided at this position (even if undefined), use it
+                        constructorArgs.push(args[i]);
                     }
                     else {
-                        // no mapping found
-                        if (this.throwOnMissing) {
+                        const name = params[i];
+                        const vo = this.getMappingVo(name);
+                        if (!!vo) {
+                            constructorArgs.push(this.getInjectedValue(vo, name));
+                        }
+                        else {
+                            // Don't throw if strictMode is on with inject declared (allows optional deps)
+                            if (this.throwOnMissing && !(this.strictMode && hasExplicitInject)) {
+                                throw new Error(formatMappingError(name, TargetClass.name));
+                            }
+                            constructorArgs.push(undefined);
+                        }
+                    }
+                }
+                else if (i < injectCount) {
+                    // This is an inject slot - use mapping only
+                    const name = params[i];
+                    const vo = this.getMappingVo(name);
+                    if (!!vo) {
+                        constructorArgs.push(this.getInjectedValue(vo, name));
+                    }
+                    else {
+                        if (this.throwOnMissing && !hasExplicitInject) {
                             throw new Error(formatMappingError(name, TargetClass.name));
                         }
                         constructorArgs.push(undefined);
                     }
                 }
+                else {
+                    // This is a param slot after inject - fill from args offset by injectCount
+                    const argIndex = i - injectCount;
+                    if (args.length > argIndex) {
+                        constructorArgs.push(args[argIndex]);
+                    }
+                    else {
+                        const name = params[i];
+                        const vo = this.getMappingVo(name);
+                        if (!!vo) {
+                            constructorArgs.push(this.getInjectedValue(vo, name));
+                        }
+                        else if (this.throwOnMissing) {
+                            throw new Error(formatMappingError(name, TargetClass.name));
+                        }
+                        else {
+                            constructorArgs.push(undefined);
+                        }
+                    }
+                }
+            }
+            // add remaining args beyond params (for rest parameters)
+            for (let i = params.length; i < args.length; i++) {
+                constructorArgs.push(args[i]);
             }
             return new (Function.prototype.bind.apply(TargetClass, constructorArgs))();
         }
@@ -347,6 +396,10 @@
             for (let i = 0, l = spl.length; i < l; i++) {
                 // removes default es6 values
                 const cArg = spl[i].split('=')[0].replace(/\s/g, '');
+                // skip rest parameters (e.g., ...args) as they can't be injected
+                if (cArg.indexOf('...') === 0) {
+                    continue;
+                }
                 // Only override arg with non-falsey deps value at same key
                 const arg = (deps && deps[i]) ? deps[i] : cArg;
                 arg.replace(FN_ARG, extractName);
@@ -386,521 +439,234 @@
         }
     }
 
-    var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
-
-    function createCommonjsModule(fn) {
-      var module = { exports: {} };
-    	return fn(module, module.exports), module.exports;
+    /**
+     * Modern TypeScript Signal Implementation
+     * Replaces js-signals with a type-safe, minimal implementation
+     */
+    /**
+     * A type-safe signal that can dispatch typed payloads to listeners
+     */
+    class Signal {
+        constructor() {
+            this.listeners = [];
+            this.halted = false;
+        }
+        /**
+         * Add a listener to this signal
+         */
+        add(handler, context, priority = 0) {
+            return this.addListener(handler, context, priority, false);
+        }
+        /**
+         * Add a listener that will be automatically removed after first dispatch
+         */
+        addOnce(handler, context, priority = 0) {
+            return this.addListener(handler, context, priority, true);
+        }
+        addListener(handler, context, priority, once) {
+            const entry = {
+                handler,
+                context,
+                priority,
+                once,
+                active: true,
+                params: []
+            };
+            // Insert sorted by priority (higher priority first)
+            const insertIndex = this.listeners.findIndex(l => l.priority < priority);
+            if (insertIndex === -1) {
+                this.listeners.push(entry);
+            }
+            else {
+                this.listeners.splice(insertIndex, 0, entry);
+            }
+            // Return binding object for control
+            const binding = {
+                detach: () => this.removeEntry(entry),
+                get active() { return entry.active; },
+                set active(value) { entry.active = value; },
+                once: entry.once,
+                priority: entry.priority,
+                execute: (data) => {
+                    if (entry.active) {
+                        const args = entry.params.length > 0
+                            ? [...entry.params, data]
+                            : [data];
+                        entry.handler.apply(entry.context, args);
+                    }
+                },
+                get params() { return entry.params; },
+                set params(value) { entry.params = value; }
+            };
+            return binding;
+        }
+        /**
+         * Remove a specific listener
+         */
+        remove(handler, context) {
+            const index = this.listeners.findIndex(l => l.handler === handler && (context === undefined || l.context === context));
+            if (index !== -1) {
+                this.listeners.splice(index, 1);
+            }
+        }
+        removeEntry(entry) {
+            const index = this.listeners.indexOf(entry);
+            if (index !== -1) {
+                this.listeners.splice(index, 1);
+            }
+        }
+        /**
+         * Remove all listeners
+         */
+        removeAll() {
+            this.listeners = [];
+        }
+        /**
+         * Dispatch data to all listeners
+         */
+        dispatch(data) {
+            this.halted = false;
+            // Copy listeners array to handle modifications during dispatch
+            const listeners = [...this.listeners];
+            const toRemove = [];
+            for (const entry of listeners) {
+                if (this.halted)
+                    break;
+                if (!entry.active)
+                    continue;
+                // Execute with curried params if present
+                if (entry.params.length > 0) {
+                    entry.handler.apply(entry.context, [...entry.params, data]);
+                }
+                else {
+                    entry.handler.call(entry.context, data);
+                }
+                if (entry.once) {
+                    toRemove.push(entry);
+                }
+            }
+            // Remove once listeners after dispatch
+            for (const entry of toRemove) {
+                this.removeEntry(entry);
+            }
+        }
+        /**
+         * Stop propagation during dispatch
+         */
+        halt() {
+            this.halted = true;
+        }
+        /**
+         * Check if a handler is registered
+         */
+        has(handler, context) {
+            return this.listeners.some(l => l.handler === handler && (context === undefined || l.context === context));
+        }
+        /**
+         * Get the number of listeners
+         */
+        getNumListeners() {
+            return this.listeners.length;
+        }
+        /**
+         * Clean up all listeners
+         */
+        dispose() {
+            this.removeAll();
+        }
     }
 
-    /*jslint onevar:true, undef:true, newcap:true, regexp:true, bitwise:true, maxerr:50, indent:4, white:false, nomen:false, plusplus:false */
-
-    var signals = createCommonjsModule(function (module) {
-    /*global define:false, require:false, exports:false, module:false, signals:false */
-
-    /** @license
-     * JS Signals <http://millermedeiros.github.com/js-signals/>
-     * Released under the MIT license
-     * Author: Miller Medeiros
-     * Version: 1.0.0 - Build: 268 (2012/11/29 05:48 PM)
+    /**
+     * Modern TypeScript Emitter Implementation
+     * A typed event emitter built on top of Signal
      */
-
-    (function(global){
-
-        // SignalBinding -------------------------------------------------
-        //================================================================
-
-        /**
-         * Object that represents a binding between a Signal and a listener function.
-         * <br />- <strong>This is an internal constructor and shouldn't be called by regular users.</strong>
-         * <br />- inspired by Joa Ebert AS3 SignalBinding and Robert Penner's Slot classes.
-         * @author Miller Medeiros
-         * @constructor
-         * @internal
-         * @name SignalBinding
-         * @param {Signal} signal Reference to Signal object that listener is currently bound to.
-         * @param {Function} listener Handler function bound to the signal.
-         * @param {boolean} isOnce If binding should be executed just once.
-         * @param {Object} [listenerContext] Context on which listener will be executed (object that should represent the `this` variable inside listener function).
-         * @param {Number} [priority] The priority level of the event listener. (default = 0).
-         */
-        function SignalBinding(signal, listener, isOnce, listenerContext, priority) {
-
-            /**
-             * Handler function bound to the signal.
-             * @type Function
-             * @private
-             */
-            this._listener = listener;
-
-            /**
-             * If binding should be executed just once.
-             * @type boolean
-             * @private
-             */
-            this._isOnce = isOnce;
-
-            /**
-             * Context on which listener will be executed (object that should represent the `this` variable inside listener function).
-             * @memberOf SignalBinding.prototype
-             * @name context
-             * @type Object|undefined|null
-             */
-            this.context = listenerContext;
-
-            /**
-             * Reference to Signal object that listener is currently bound to.
-             * @type Signal
-             * @private
-             */
-            this._signal = signal;
-
-            /**
-             * Listener priority
-             * @type Number
-             * @private
-             */
-            this._priority = priority || 0;
-        }
-
-        SignalBinding.prototype = {
-
-            /**
-             * If binding is active and should be executed.
-             * @type boolean
-             */
-            active : true,
-
-            /**
-             * Default parameters passed to listener during `Signal.dispatch` and `SignalBinding.execute`. (curried parameters)
-             * @type Array|null
-             */
-            params : null,
-
-            /**
-             * Call listener passing arbitrary parameters.
-             * <p>If binding was added using `Signal.addOnce()` it will be automatically removed from signal dispatch queue, this method is used internally for the signal dispatch.</p>
-             * @param {Array} [paramsArr] Array of parameters that should be passed to the listener
-             * @return {*} Value returned by the listener.
-             */
-            execute : function (paramsArr) {
-                var handlerReturn, params;
-                if (this.active && !!this._listener) {
-                    params = this.params? this.params.concat(paramsArr) : paramsArr;
-                    handlerReturn = this._listener.apply(this.context, params);
-                    if (this._isOnce) {
-                        this.detach();
-                    }
-                }
-                return handlerReturn;
-            },
-
-            /**
-             * Detach binding from signal.
-             * - alias to: mySignal.remove(myBinding.getListener());
-             * @return {Function|null} Handler function bound to the signal or `null` if binding was previously detached.
-             */
-            detach : function () {
-                return this.isBound()? this._signal.remove(this._listener, this.context) : null;
-            },
-
-            /**
-             * @return {Boolean} `true` if binding is still bound to the signal and have a listener.
-             */
-            isBound : function () {
-                return (!!this._signal && !!this._listener);
-            },
-
-            /**
-             * @return {boolean} If SignalBinding will only be executed once.
-             */
-            isOnce : function () {
-                return this._isOnce;
-            },
-
-            /**
-             * @return {Function} Handler function bound to the signal.
-             */
-            getListener : function () {
-                return this._listener;
-            },
-
-            /**
-             * @return {Signal} Signal that listener is currently bound to.
-             */
-            getSignal : function () {
-                return this._signal;
-            },
-
-            /**
-             * Delete instance properties
-             * @private
-             */
-            _destroy : function () {
-                delete this._signal;
-                delete this._listener;
-                delete this.context;
-            },
-
-            /**
-             * @return {string} String representation of the object.
-             */
-            toString : function () {
-                return '[SignalBinding isOnce:' + this._isOnce +', isBound:'+ this.isBound() +', active:' + this.active + ']';
-            }
-
-        };
-
-
-    /*global SignalBinding:false*/
-
-        // Signal --------------------------------------------------------
-        //================================================================
-
-        function validateListener(listener, fnName) {
-            if (typeof listener !== 'function') {
-                throw new Error( 'listener is a required param of {fn}() and should be a Function.'.replace('{fn}', fnName) );
-            }
-        }
-
-        /**
-         * Custom event broadcaster
-         * <br />- inspired by Robert Penner's AS3 Signals.
-         * @name Signal
-         * @author Miller Medeiros
-         * @constructor
-         */
-        function Signal() {
-            /**
-             * @type Array.<SignalBinding>
-             * @private
-             */
-            this._bindings = [];
-            this._prevParams = null;
-
-            // enforce dispatch to aways work on same context (#47)
-            var self = this;
-            this.dispatch = function(){
-                Signal.prototype.dispatch.apply(self, arguments);
-            };
-        }
-
-        Signal.prototype = {
-
-            /**
-             * Signals Version Number
-             * @type String
-             * @const
-             */
-            VERSION : '1.0.0',
-
-            /**
-             * If Signal should keep record of previously dispatched parameters and
-             * automatically execute listener during `add()`/`addOnce()` if Signal was
-             * already dispatched before.
-             * @type boolean
-             */
-            memorize : false,
-
-            /**
-             * @type boolean
-             * @private
-             */
-            _shouldPropagate : true,
-
-            /**
-             * If Signal is active and should broadcast events.
-             * <p><strong>IMPORTANT:</strong> Setting this property during a dispatch will only affect the next dispatch, if you want to stop the propagation of a signal use `halt()` instead.</p>
-             * @type boolean
-             */
-            active : true,
-
-            /**
-             * @param {Function} listener
-             * @param {boolean} isOnce
-             * @param {Object} [listenerContext]
-             * @param {Number} [priority]
-             * @return {SignalBinding}
-             * @private
-             */
-            _registerListener : function (listener, isOnce, listenerContext, priority) {
-
-                var prevIndex = this._indexOfListener(listener, listenerContext),
-                    binding;
-
-                if (prevIndex !== -1) {
-                    binding = this._bindings[prevIndex];
-                    if (binding.isOnce() !== isOnce) {
-                        throw new Error('You cannot add'+ (isOnce? '' : 'Once') +'() then add'+ (!isOnce? '' : 'Once') +'() the same listener without removing the relationship first.');
-                    }
-                } else {
-                    binding = new SignalBinding(this, listener, isOnce, listenerContext, priority);
-                    this._addBinding(binding);
-                }
-
-                if(this.memorize && this._prevParams){
-                    binding.execute(this._prevParams);
-                }
-
-                return binding;
-            },
-
-            /**
-             * @param {SignalBinding} binding
-             * @private
-             */
-            _addBinding : function (binding) {
-                //simplified insertion sort
-                var n = this._bindings.length;
-                do { --n; } while (this._bindings[n] && binding._priority <= this._bindings[n]._priority);
-                this._bindings.splice(n + 1, 0, binding);
-            },
-
-            /**
-             * @param {Function} listener
-             * @return {number}
-             * @private
-             */
-            _indexOfListener : function (listener, context) {
-                var n = this._bindings.length,
-                    cur;
-                while (n--) {
-                    cur = this._bindings[n];
-                    if (cur._listener === listener && cur.context === context) {
-                        return n;
-                    }
-                }
-                return -1;
-            },
-
-            /**
-             * Check if listener was attached to Signal.
-             * @param {Function} listener
-             * @param {Object} [context]
-             * @return {boolean} if Signal has the specified listener.
-             */
-            has : function (listener, context) {
-                return this._indexOfListener(listener, context) !== -1;
-            },
-
-            /**
-             * Add a listener to the signal.
-             * @param {Function} listener Signal handler function.
-             * @param {Object} [listenerContext] Context on which listener will be executed (object that should represent the `this` variable inside listener function).
-             * @param {Number} [priority] The priority level of the event listener. Listeners with higher priority will be executed before listeners with lower priority. Listeners with same priority level will be executed at the same order as they were added. (default = 0)
-             * @return {SignalBinding} An Object representing the binding between the Signal and listener.
-             */
-            add : function (listener, listenerContext, priority) {
-                validateListener(listener, 'add');
-                return this._registerListener(listener, false, listenerContext, priority);
-            },
-
-            /**
-             * Add listener to the signal that should be removed after first execution (will be executed only once).
-             * @param {Function} listener Signal handler function.
-             * @param {Object} [listenerContext] Context on which listener will be executed (object that should represent the `this` variable inside listener function).
-             * @param {Number} [priority] The priority level of the event listener. Listeners with higher priority will be executed before listeners with lower priority. Listeners with same priority level will be executed at the same order as they were added. (default = 0)
-             * @return {SignalBinding} An Object representing the binding between the Signal and listener.
-             */
-            addOnce : function (listener, listenerContext, priority) {
-                validateListener(listener, 'addOnce');
-                return this._registerListener(listener, true, listenerContext, priority);
-            },
-
-            /**
-             * Remove a single listener from the dispatch queue.
-             * @param {Function} listener Handler function that should be removed.
-             * @param {Object} [context] Execution context (since you can add the same handler multiple times if executing in a different context).
-             * @return {Function} Listener handler function.
-             */
-            remove : function (listener, context) {
-                validateListener(listener, 'remove');
-
-                var i = this._indexOfListener(listener, context);
-                if (i !== -1) {
-                    this._bindings[i]._destroy(); //no reason to a SignalBinding exist if it isn't attached to a signal
-                    this._bindings.splice(i, 1);
-                }
-                return listener;
-            },
-
-            /**
-             * Remove all listeners from the Signal.
-             */
-            removeAll : function () {
-                var n = this._bindings.length;
-                while (n--) {
-                    this._bindings[n]._destroy();
-                }
-                this._bindings.length = 0;
-            },
-
-            /**
-             * @return {number} Number of listeners attached to the Signal.
-             */
-            getNumListeners : function () {
-                return this._bindings.length;
-            },
-
-            /**
-             * Stop propagation of the event, blocking the dispatch to next listeners on the queue.
-             * <p><strong>IMPORTANT:</strong> should be called only during signal dispatch, calling it before/after dispatch won't affect signal broadcast.</p>
-             * @see Signal.prototype.disable
-             */
-            halt : function () {
-                this._shouldPropagate = false;
-            },
-
-            /**
-             * Dispatch/Broadcast Signal to all listeners added to the queue.
-             * @param {...*} [params] Parameters that should be passed to each handler.
-             */
-            dispatch : function (params) {
-                if (! this.active) {
-                    return;
-                }
-
-                var paramsArr = Array.prototype.slice.call(arguments),
-                    n = this._bindings.length,
-                    bindings;
-
-                if (this.memorize) {
-                    this._prevParams = paramsArr;
-                }
-
-                if (! n) {
-                    //should come after memorize
-                    return;
-                }
-
-                bindings = this._bindings.slice(); //clone array in case add/remove items during dispatch
-                this._shouldPropagate = true; //in case `halt` was called before dispatch or during the previous dispatch.
-
-                //execute all callbacks until end of the list or until a callback returns `false` or stops propagation
-                //reverse loop since listeners with higher priority will be added at the end of the list
-                do { n--; } while (bindings[n] && this._shouldPropagate && bindings[n].execute(paramsArr) !== false);
-            },
-
-            /**
-             * Forget memorized arguments.
-             * @see Signal.memorize
-             */
-            forget : function(){
-                this._prevParams = null;
-            },
-
-            /**
-             * Remove all bindings from signal and destroy any reference to external objects (destroy Signal object).
-             * <p><strong>IMPORTANT:</strong> calling any method on the signal instance after calling dispose will throw errors.</p>
-             */
-            dispose : function () {
-                this.removeAll();
-                delete this._bindings;
-                delete this._prevParams;
-            },
-
-            /**
-             * @return {string} String representation of the object.
-             */
-            toString : function () {
-                return '[Signal active:'+ this.active +' numListeners:'+ this.getNumListeners() +']';
-            }
-
-        };
-
-
-        // Namespace -----------------------------------------------------
-        //================================================================
-
-        /**
-         * Signals namespace
-         * @namespace
-         * @name signals
-         */
-        var signals = Signal;
-
-        /**
-         * Custom event broadcaster
-         * @see Signal
-         */
-        // alias for backwards compatibility (see #gh-44)
-        signals.Signal = Signal;
-
-
-
-        //exports to multiple environments
-        if (module.exports){ //node
-            module.exports = signals;
-        } else { //browser
-            //use string because of Google closure compiler ADVANCED_MODE
-            /*jslint sub:true */
-            global['signals'] = signals;
-        }
-
-    }(commonjsGlobal));
-    });
-
-    class Emitter__ // TODO IMPORTANT DEACTIVATED IN FAVOOUR OF CODE HIGHLIGHTUNG THE LIB'S SINGLETON
-     {
-        // static getInstance(): Emitter
-        // {
-        //     if( !Emitter._instance ) {
-        //         Emitter._instance = new Emitter();
-        //     }
-        //     return Emitter._instance;
-        // }
+    /**
+     * Event emitter with lazy signal creation and automatic cleanup
+     */
+    class Emitter {
         constructor() {
             this.signals = {};
         }
+        /**
+         * Add a listener for an event
+         */
         addListener(id, handler, scope, priority) {
             if (!this.signals[id]) {
-                this.signals[id] = new signals.Signal();
+                this.signals[id] = new Signal();
             }
             return this.signals[id].add(handler, scope, priority);
         }
+        /**
+         * Add a listener that fires only once
+         */
         addListenerOnce(id, handler, scope, priority) {
             if (!this.signals[id]) {
-                this.signals[id] = new signals.Signal();
+                this.signals[id] = new Signal();
             }
             return this.signals[id].addOnce(handler, scope, priority);
         }
+        /**
+         * Remove a specific listener
+         */
         removeListener(id, handler, scope) {
             const signal = this.signals[id];
             if (signal) {
                 signal.remove(handler, scope);
             }
         }
+        /**
+         * Get direct access to a signal (for advanced use)
+         */
         getSignal(id) {
             return this.signals[id];
         }
+        /**
+         * Stop signal propagation
+         */
         haltSignal(id) {
-            if (this.signals[id]) {
-                this.signals[id].halt();
+            const signal = this.signals[id];
+            if (signal) {
+                signal.halt();
             }
         }
+        /**
+         * Dispatch an event to all listeners
+         */
         dispatch(id, data, useIdInParams = true) {
             const signal = this.signals[id];
             if (signal) {
-                if (data) {
-                    if (useIdInParams && Object.prototype.toString.call(data) === '[object Object]' && !data.hasOwnProperty('signalType')) {
+                if (data !== undefined) {
+                    // Auto-inject signalType for object payloads
+                    if (useIdInParams &&
+                        typeof data === 'object' &&
+                        data !== null &&
+                        !Array.isArray(data) &&
+                        !('signalType' in data)) {
                         data.signalType = id;
                     }
-                    signal.dispatch.apply(signal, [data]);
+                    signal.dispatch(data);
                 }
                 else {
-                    signal.dispatch();
+                    signal.dispatch(undefined);
                 }
             }
         }
+        /**
+         * Check if there are listeners for an event
+         */
+        hasListeners(id) {
+            const signal = this.signals[id];
+            return signal ? signal.getNumListeners() > 0 : false;
+        }
+        /**
+         * Clean up all signals
+         */
         dispose() {
-            let sigs = this.signals;
-            for (const id in sigs) {
-                if (!sigs.hasOwnProperty(id)) {
-                    continue;
+            for (const id in this.signals) {
+                if (Object.prototype.hasOwnProperty.call(this.signals, id)) {
+                    this.signals[id].removeAll();
+                    delete this.signals[id];
                 }
-                sigs[id].removeAll();
-                //sigs[id] = undefined;
-                delete sigs[id];
             }
             this.signals = {};
         }
@@ -908,6 +674,7 @@
 
     function interceptorHandler(injector, id, CommandClass, signal, binding, ...args) {
         const childInjector = injector.createChild();
+        childInjector.mapValue('injector', childInjector);
         childInjector.mapValue('id', id);
         childInjector.mapValue('signal', signal);
         childInjector.mapValue('binding', binding);
@@ -1013,12 +780,12 @@
             let targetList = [];
             const mediatorList = [];
             if (Array.isArray(target) && target.length > 0) {
-                targetList = [...target];
-                // if( aggregateTarget ) {
-                //     targetList = target
-                // } else {
-                //     targetList = [...target]
-                // }
+                if (aggregateTarget) {
+                    targetList = [target];
+                }
+                else {
+                    targetList = [...target];
+                }
             }
             else if (target instanceof HTMLElement) {
                 targetList = [target];
@@ -1034,10 +801,10 @@
                 }
             }
             for (let i = 0, l = targetList.length; i < l; i++) {
-                const injector = this.injector.createChild();
-                //const injector = this.injector;
-                injector.mapValue('target', targetList[i]);
-                const mediator = injector.createInstance(MediatorClass);
+                const childInjector = this.injector.createChild();
+                childInjector.mapValue('injector', childInjector);
+                childInjector.mapValue('target', targetList[i]);
+                const mediator = childInjector.createInstance(MediatorClass);
                 //call init() method if present -- NOTE already covered in infuse.injector postConstruct()
                 // if( typeof MediatorClass.prototype.postConstruct === 'function' ) {
                 //     mediator.postConstruct.call( mediator )
@@ -1077,11 +844,13 @@
         }
         else {
             for (const prop in extension) {
-                if (bindToExtension && typeof extension[prop] === 'function') {
-                    target[prop] = extension[prop].bind(extension);
-                }
-                else {
-                    target[prop] = extension[prop];
+                if (target[prop] === undefined || target[prop] === null) {
+                    if (bindToExtension && typeof extension[prop] === 'function') {
+                        target[prop] = extension[prop].bind(extension);
+                    }
+                    else {
+                        target[prop] = extension[prop];
+                    }
                 }
             }
         }
@@ -1167,6 +936,7 @@
             // create module instance
             const instantiate = (injector, value, args) => {
                 const params = infuse.getDependencies(value);
+                const hasExplicitInject = value.hasOwnProperty('inject');
                 // add module function
                 let moduleArgs = [value];
                 // add injection mappings
@@ -1178,13 +948,16 @@
                         moduleArgs.push(undefined);
                     }
                 }
-                // trim array
-                for (let a = moduleArgs.length - 1; a >= 0; a--) {
-                    if (typeof moduleArgs[a] === 'undefined') {
-                        moduleArgs.splice(a, 1);
-                    }
-                    else {
-                        break;
+                // trim trailing undefined values only if no explicit inject property
+                // (allows user args to fill param slots when params are parsed from function signature)
+                if (!hasExplicitInject) {
+                    for (let a = moduleArgs.length - 1; a >= 0; a--) {
+                        if (typeof moduleArgs[a] === 'undefined') {
+                            moduleArgs.splice(a, 1);
+                        }
+                        else {
+                            break;
+                        }
                     }
                 }
                 // add arguments
@@ -1263,7 +1036,7 @@
     //import utils from './utils';
     class Application {
         get emitter() {
-            return this._emitter || new Emitter__();
+            return this._emitter || new Emitter();
         }
         get injector() {
             return this._injector || new Injector();
@@ -1293,7 +1066,7 @@
         }
         setupEmitter() {
             if (this._injector) {
-                this._injector.mapClass('emitter', Emitter__, true);
+                this._injector.mapClass('emitter', Emitter, true);
                 this._emitter = this._injector.getValue('emitter');
             }
         }
@@ -1345,9 +1118,10 @@
 
     exports.Application = Application;
     exports.Commands = Commands;
-    exports.Emitter = Emitter__;
+    exports.Emitter = Emitter;
     exports.Mediators = Mediators;
     exports.Modules = Modules;
+    exports.Signal = Signal;
     exports.infuse = infuse;
     exports.utils = utils;
 

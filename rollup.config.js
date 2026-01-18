@@ -13,17 +13,11 @@ export default [
 	// ESM build
 	{
         input: 'index.ts',
-        external: [
-            'signals'
-        ],
 		output: {
 			name: 'soma',
 			file: pkg.browser,
 			format: 'esm',
 			banner,
-            globals: {
-                'signals': 'signals'
-            }
         },
 		plugins: [
 			resolve(),

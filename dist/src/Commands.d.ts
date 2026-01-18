@@ -1,4 +1,4 @@
-import { Signal, SignalBinding } from 'signals';
+import { Signal, Binding } from './signal';
 interface Injector {
     createChild(): Injector;
     mapValue(prop: string, val: any): Injector;
@@ -6,7 +6,7 @@ interface Injector {
     dispose(): void;
 }
 interface Emitter {
-    addListener(id: string, handler: Function, scope: any): SignalBinding;
+    addListener(id: string, handler: Function, scope: any): Binding;
     getSignal(id: string): Signal | undefined;
 }
 interface CommandClass {

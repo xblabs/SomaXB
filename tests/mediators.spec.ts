@@ -57,6 +57,7 @@ describe('Mediators Tests', () => {
 
         it('should create mediator with single HTMLElement', () => {
             class TestMediator {
+                static inject = ['target'];
                 target?: HTMLElement;
                 constructor() {}
             }
@@ -70,6 +71,7 @@ describe('Mediators Tests', () => {
             let receivedTarget: HTMLElement | undefined;
 
             class TestMediator {
+                static inject = ['target'];
                 target?: HTMLElement;
                 constructor() {}
                 postConstruct() {
@@ -100,6 +102,7 @@ describe('Mediators Tests', () => {
             let mediatorInjector: Injector | undefined;
 
             class TestMediator {
+                static inject = ['injector', 'target'];
                 injector?: Injector;
                 target?: HTMLElement;
                 constructor() {}
@@ -142,6 +145,7 @@ describe('Mediators Tests', () => {
             let receivedTarget: any;
 
             class TestMediator {
+                static inject = ['target'];
                 target?: any;
                 constructor() {}
                 postConstruct() {
@@ -207,6 +211,7 @@ describe('Mediators Tests', () => {
             const targets: any[] = [];
 
             class TestMediator {
+                static inject = ['target'];
                 target?: any;
                 constructor() {}
                 postConstruct() {
@@ -255,6 +260,7 @@ describe('Mediators Tests', () => {
             let receivedEmitter: Emitter | undefined;
 
             class TestMediator {
+                static inject = ['emitter', 'target'];
                 emitter?: Emitter;
                 target?: HTMLElement;
                 constructor() {}
@@ -273,6 +279,7 @@ describe('Mediators Tests', () => {
             let receivedService: any;
 
             class TestMediator {
+                static inject = ['customService', 'target'];
                 customService?: any;
                 target?: HTMLElement;
                 constructor() {}
@@ -356,6 +363,7 @@ describe('Mediators Tests', () => {
             const element = document.createElement('div');
 
             class TestMediator {
+                static inject = ['emitter', 'target'];
                 emitter?: Emitter;
                 target?: HTMLElement;
                 constructor() {}
@@ -400,6 +408,7 @@ describe('Mediators Tests', () => {
             const injectors: Injector[] = [];
 
             class TestMediator {
+                static inject = ['injector', 'target'];
                 injector?: Injector;
                 target?: any;
                 constructor() {}

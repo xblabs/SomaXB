@@ -1,10 +1,6 @@
-import {Signal} from "signals";
+import { Signal, SignalEvent } from './signal';
 
-declare type SignalEvent = {
-    [name: string]: any
-}
-
-declare type SignalPool = { [name:string] : Signal };
+declare type SignalPool = { [name: string]: Signal<any> };
 
 
 declare interface MappingVO

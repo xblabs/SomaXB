@@ -1,6 +1,4 @@
-// @ts-ignore
-import Emitter from '../src/Emitter';
-import { Signal } from 'signals';
+import { Emitter, Signal } from '../src/signal';
 
 describe('Emitter Tests', () => {
     let emitter: Emitter;
@@ -25,7 +23,7 @@ describe('Emitter Tests', () => {
             const handler = jest.fn();
             const binding = emitter.addListener('test-signal', handler);
             expect(binding).toBeDefined();
-            expect(binding.getListener()).toBe(handler);
+            expect(binding.active).toBe(true);
         });
 
         it('should dispatch a signal without data', () => {

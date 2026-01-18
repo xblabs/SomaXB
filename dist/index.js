@@ -1,6 +1,4 @@
-/* soma - v3.0.4 - 31/12/2025 - https://github.com/soundstep/soma */
-import { Signal } from 'signals';
-
+/* soma - v4.0.0 - 18/01/2026 - https://github.com/soundstep/soma */
 const FN_ARGS_FUNCTION = /^function\s*[^\(]*\(\s*([^\)]*)\)/m;
 const FN_ARGS_CLASS = /(?!function)\s*constructor\s*[^\(|function]*\(\s*([^\)]*)\)\s*{/m;
 const FN_ARG_SPLIT = /,/;
@@ -170,7 +168,12 @@ class Injector$1 {
         if (vo.cl) {
             if (vo.singleton) {
                 if (!vo.value) {
-                    vo.value = this.createInstance(vo.cl, ...args);
+                    // Set value before inject to support circular dependencies
+                    vo.value = this.instantiate(vo.cl, ...args);
+                    this.inject(vo.value);
+                    if (typeof vo.value.postConstruct === 'function') {
+                        vo.value.postConstruct();
+                    }
                 }
                 return vo.value;
             }
@@ -201,35 +204,79 @@ class Injector$1 {
             throw new Error(infuse.errors.CREATE_INSTANCE_INVALID_PARAM);
         }
         const params = infuse.getDependencies(TargetClass);
-        if (this.strictMode && !TargetClass.hasOwnProperty('inject')) {
+        const injectDeps = infuse.getExplicitInjectDependencies(TargetClass);
+        const injectCount = injectDeps.length;
+        const hasExplicitInject = TargetClass.hasOwnProperty('inject');
+        if (this.strictMode && !hasExplicitInject) {
             throw new Error(infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE + " : " + TargetClass.name + "(" + params.join(', ') + ")");
         }
-        else if (this.strictModeConstructorInjection && params.length > 0 && !TargetClass.hasOwnProperty('inject')) {
+        else if (this.strictModeConstructorInjection && params.length > 0 && !hasExplicitInject) {
             throw new Error(infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE_CONSTRUCTOR_INJECTION + " : " + TargetClass.name + "(" + params.join(', ') + ")");
         }
         const constructorArgs = [null];
+        const nonInjectParamCount = params.length - injectCount;
+        // Determine if args should override inject slots or fill non-inject slots
+        const argsOverrideInject = args.length > nonInjectParamCount || nonInjectParamCount === 0;
         for (let i = 0, l = params.length; i < l; i++) {
-            if (args.length > i && args[i] !== undefined && args[i] !== null) {
-                // argument found
-                constructorArgs.push(args[i]);
-            }
-            else {
-                const name = params[i];
-                // no argument found
-                const vo = this.getMappingVo(name);
-                if (!!vo) {
-                    // found mapping
-                    const val = this.getInjectedValue(vo, name);
-                    constructorArgs.push(val);
+            if (argsOverrideInject) {
+                // Args are positional, can override inject slots
+                if (args.length > i) {
+                    // Arg provided at this position (even if undefined), use it
+                    constructorArgs.push(args[i]);
                 }
                 else {
-                    // no mapping found
-                    if (this.throwOnMissing) {
+                    const name = params[i];
+                    const vo = this.getMappingVo(name);
+                    if (!!vo) {
+                        constructorArgs.push(this.getInjectedValue(vo, name));
+                    }
+                    else {
+                        // Don't throw if strictMode is on with inject declared (allows optional deps)
+                        if (this.throwOnMissing && !(this.strictMode && hasExplicitInject)) {
+                            throw new Error(formatMappingError(name, TargetClass.name));
+                        }
+                        constructorArgs.push(undefined);
+                    }
+                }
+            }
+            else if (i < injectCount) {
+                // This is an inject slot - use mapping only
+                const name = params[i];
+                const vo = this.getMappingVo(name);
+                if (!!vo) {
+                    constructorArgs.push(this.getInjectedValue(vo, name));
+                }
+                else {
+                    if (this.throwOnMissing && !hasExplicitInject) {
                         throw new Error(formatMappingError(name, TargetClass.name));
                     }
                     constructorArgs.push(undefined);
                 }
             }
+            else {
+                // This is a param slot after inject - fill from args offset by injectCount
+                const argIndex = i - injectCount;
+                if (args.length > argIndex) {
+                    constructorArgs.push(args[argIndex]);
+                }
+                else {
+                    const name = params[i];
+                    const vo = this.getMappingVo(name);
+                    if (!!vo) {
+                        constructorArgs.push(this.getInjectedValue(vo, name));
+                    }
+                    else if (this.throwOnMissing) {
+                        throw new Error(formatMappingError(name, TargetClass.name));
+                    }
+                    else {
+                        constructorArgs.push(undefined);
+                    }
+                }
+            }
+        }
+        // add remaining args beyond params (for rest parameters)
+        for (let i = params.length; i < args.length; i++) {
+            constructorArgs.push(args[i]);
         }
         return new (Function.prototype.bind.apply(TargetClass, constructorArgs))();
     }
@@ -343,6 +390,10 @@ infuse.getDependencies = function (cl) {
         for (let i = 0, l = spl.length; i < l; i++) {
             // removes default es6 values
             const cArg = spl[i].split('=')[0].replace(/\s/g, '');
+            // skip rest parameters (e.g., ...args) as they can't be injected
+            if (cArg.indexOf('...') === 0) {
+                continue;
+            }
             // Only override arg with non-falsey deps value at same key
             const arg = (deps && deps[i]) ? deps[i] : cArg;
             arg.replace(FN_ARG, extractName);
@@ -382,67 +433,234 @@ class Injector extends Injector$1 {
     }
 }
 
-class Emitter__ // TODO IMPORTANT DEACTIVATED IN FAVOOUR OF CODE HIGHLIGHTUNG THE LIB'S SINGLETON
- {
-    // static getInstance(): Emitter
-    // {
-    //     if( !Emitter._instance ) {
-    //         Emitter._instance = new Emitter();
-    //     }
-    //     return Emitter._instance;
-    // }
+/**
+ * Modern TypeScript Signal Implementation
+ * Replaces js-signals with a type-safe, minimal implementation
+ */
+/**
+ * A type-safe signal that can dispatch typed payloads to listeners
+ */
+class Signal {
+    constructor() {
+        this.listeners = [];
+        this.halted = false;
+    }
+    /**
+     * Add a listener to this signal
+     */
+    add(handler, context, priority = 0) {
+        return this.addListener(handler, context, priority, false);
+    }
+    /**
+     * Add a listener that will be automatically removed after first dispatch
+     */
+    addOnce(handler, context, priority = 0) {
+        return this.addListener(handler, context, priority, true);
+    }
+    addListener(handler, context, priority, once) {
+        const entry = {
+            handler,
+            context,
+            priority,
+            once,
+            active: true,
+            params: []
+        };
+        // Insert sorted by priority (higher priority first)
+        const insertIndex = this.listeners.findIndex(l => l.priority < priority);
+        if (insertIndex === -1) {
+            this.listeners.push(entry);
+        }
+        else {
+            this.listeners.splice(insertIndex, 0, entry);
+        }
+        // Return binding object for control
+        const binding = {
+            detach: () => this.removeEntry(entry),
+            get active() { return entry.active; },
+            set active(value) { entry.active = value; },
+            once: entry.once,
+            priority: entry.priority,
+            execute: (data) => {
+                if (entry.active) {
+                    const args = entry.params.length > 0
+                        ? [...entry.params, data]
+                        : [data];
+                    entry.handler.apply(entry.context, args);
+                }
+            },
+            get params() { return entry.params; },
+            set params(value) { entry.params = value; }
+        };
+        return binding;
+    }
+    /**
+     * Remove a specific listener
+     */
+    remove(handler, context) {
+        const index = this.listeners.findIndex(l => l.handler === handler && (context === undefined || l.context === context));
+        if (index !== -1) {
+            this.listeners.splice(index, 1);
+        }
+    }
+    removeEntry(entry) {
+        const index = this.listeners.indexOf(entry);
+        if (index !== -1) {
+            this.listeners.splice(index, 1);
+        }
+    }
+    /**
+     * Remove all listeners
+     */
+    removeAll() {
+        this.listeners = [];
+    }
+    /**
+     * Dispatch data to all listeners
+     */
+    dispatch(data) {
+        this.halted = false;
+        // Copy listeners array to handle modifications during dispatch
+        const listeners = [...this.listeners];
+        const toRemove = [];
+        for (const entry of listeners) {
+            if (this.halted)
+                break;
+            if (!entry.active)
+                continue;
+            // Execute with curried params if present
+            if (entry.params.length > 0) {
+                entry.handler.apply(entry.context, [...entry.params, data]);
+            }
+            else {
+                entry.handler.call(entry.context, data);
+            }
+            if (entry.once) {
+                toRemove.push(entry);
+            }
+        }
+        // Remove once listeners after dispatch
+        for (const entry of toRemove) {
+            this.removeEntry(entry);
+        }
+    }
+    /**
+     * Stop propagation during dispatch
+     */
+    halt() {
+        this.halted = true;
+    }
+    /**
+     * Check if a handler is registered
+     */
+    has(handler, context) {
+        return this.listeners.some(l => l.handler === handler && (context === undefined || l.context === context));
+    }
+    /**
+     * Get the number of listeners
+     */
+    getNumListeners() {
+        return this.listeners.length;
+    }
+    /**
+     * Clean up all listeners
+     */
+    dispose() {
+        this.removeAll();
+    }
+}
+
+/**
+ * Modern TypeScript Emitter Implementation
+ * A typed event emitter built on top of Signal
+ */
+/**
+ * Event emitter with lazy signal creation and automatic cleanup
+ */
+class Emitter {
     constructor() {
         this.signals = {};
     }
+    /**
+     * Add a listener for an event
+     */
     addListener(id, handler, scope, priority) {
         if (!this.signals[id]) {
             this.signals[id] = new Signal();
         }
         return this.signals[id].add(handler, scope, priority);
     }
+    /**
+     * Add a listener that fires only once
+     */
     addListenerOnce(id, handler, scope, priority) {
         if (!this.signals[id]) {
             this.signals[id] = new Signal();
         }
         return this.signals[id].addOnce(handler, scope, priority);
     }
+    /**
+     * Remove a specific listener
+     */
     removeListener(id, handler, scope) {
         const signal = this.signals[id];
         if (signal) {
             signal.remove(handler, scope);
         }
     }
+    /**
+     * Get direct access to a signal (for advanced use)
+     */
     getSignal(id) {
         return this.signals[id];
     }
+    /**
+     * Stop signal propagation
+     */
     haltSignal(id) {
-        if (this.signals[id]) {
-            this.signals[id].halt();
+        const signal = this.signals[id];
+        if (signal) {
+            signal.halt();
         }
     }
+    /**
+     * Dispatch an event to all listeners
+     */
     dispatch(id, data, useIdInParams = true) {
         const signal = this.signals[id];
         if (signal) {
-            if (data) {
-                if (useIdInParams && Object.prototype.toString.call(data) === '[object Object]' && !data.hasOwnProperty('signalType')) {
+            if (data !== undefined) {
+                // Auto-inject signalType for object payloads
+                if (useIdInParams &&
+                    typeof data === 'object' &&
+                    data !== null &&
+                    !Array.isArray(data) &&
+                    !('signalType' in data)) {
                     data.signalType = id;
                 }
-                signal.dispatch.apply(signal, [data]);
+                signal.dispatch(data);
             }
             else {
-                signal.dispatch();
+                signal.dispatch(undefined);
             }
         }
     }
+    /**
+     * Check if there are listeners for an event
+     */
+    hasListeners(id) {
+        const signal = this.signals[id];
+        return signal ? signal.getNumListeners() > 0 : false;
+    }
+    /**
+     * Clean up all signals
+     */
     dispose() {
-        let sigs = this.signals;
-        for (const id in sigs) {
-            if (!sigs.hasOwnProperty(id)) {
-                continue;
+        for (const id in this.signals) {
+            if (Object.prototype.hasOwnProperty.call(this.signals, id)) {
+                this.signals[id].removeAll();
+                delete this.signals[id];
             }
-            sigs[id].removeAll();
-            //sigs[id] = undefined;
-            delete sigs[id];
         }
         this.signals = {};
     }
@@ -450,6 +668,7 @@ class Emitter__ // TODO IMPORTANT DEACTIVATED IN FAVOOUR OF CODE HIGHLIGHTUNG TH
 
 function interceptorHandler(injector, id, CommandClass, signal, binding, ...args) {
     const childInjector = injector.createChild();
+    childInjector.mapValue('injector', childInjector);
     childInjector.mapValue('id', id);
     childInjector.mapValue('signal', signal);
     childInjector.mapValue('binding', binding);
@@ -555,12 +774,12 @@ class Mediators {
         let targetList = [];
         const mediatorList = [];
         if (Array.isArray(target) && target.length > 0) {
-            targetList = [...target];
-            // if( aggregateTarget ) {
-            //     targetList = target
-            // } else {
-            //     targetList = [...target]
-            // }
+            if (aggregateTarget) {
+                targetList = [target];
+            }
+            else {
+                targetList = [...target];
+            }
         }
         else if (target instanceof HTMLElement) {
             targetList = [target];
@@ -576,10 +795,10 @@ class Mediators {
             }
         }
         for (let i = 0, l = targetList.length; i < l; i++) {
-            const injector = this.injector.createChild();
-            //const injector = this.injector;
-            injector.mapValue('target', targetList[i]);
-            const mediator = injector.createInstance(MediatorClass);
+            const childInjector = this.injector.createChild();
+            childInjector.mapValue('injector', childInjector);
+            childInjector.mapValue('target', targetList[i]);
+            const mediator = childInjector.createInstance(MediatorClass);
             //call init() method if present -- NOTE already covered in infuse.injector postConstruct()
             // if( typeof MediatorClass.prototype.postConstruct === 'function' ) {
             //     mediator.postConstruct.call( mediator )
@@ -619,11 +838,13 @@ utils.applyProperties = (target, extension, bindToExtension, list) => {
     }
     else {
         for (const prop in extension) {
-            if (bindToExtension && typeof extension[prop] === 'function') {
-                target[prop] = extension[prop].bind(extension);
-            }
-            else {
-                target[prop] = extension[prop];
+            if (target[prop] === undefined || target[prop] === null) {
+                if (bindToExtension && typeof extension[prop] === 'function') {
+                    target[prop] = extension[prop].bind(extension);
+                }
+                else {
+                    target[prop] = extension[prop];
+                }
             }
         }
     }
@@ -709,6 +930,7 @@ class Modules {
         // create module instance
         const instantiate = (injector, value, args) => {
             const params = infuse.getDependencies(value);
+            const hasExplicitInject = value.hasOwnProperty('inject');
             // add module function
             let moduleArgs = [value];
             // add injection mappings
@@ -720,13 +942,16 @@ class Modules {
                     moduleArgs.push(undefined);
                 }
             }
-            // trim array
-            for (let a = moduleArgs.length - 1; a >= 0; a--) {
-                if (typeof moduleArgs[a] === 'undefined') {
-                    moduleArgs.splice(a, 1);
-                }
-                else {
-                    break;
+            // trim trailing undefined values only if no explicit inject property
+            // (allows user args to fill param slots when params are parsed from function signature)
+            if (!hasExplicitInject) {
+                for (let a = moduleArgs.length - 1; a >= 0; a--) {
+                    if (typeof moduleArgs[a] === 'undefined') {
+                        moduleArgs.splice(a, 1);
+                    }
+                    else {
+                        break;
+                    }
                 }
             }
             // add arguments
@@ -805,7 +1030,7 @@ Modules.inject = ["injector"];
 //import utils from './utils';
 class Application {
     get emitter() {
-        return this._emitter || new Emitter__();
+        return this._emitter || new Emitter();
     }
     get injector() {
         return this._injector || new Injector();
@@ -835,7 +1060,7 @@ class Application {
     }
     setupEmitter() {
         if (this._injector) {
-            this._injector.mapClass('emitter', Emitter__, true);
+            this._injector.mapClass('emitter', Emitter, true);
             this._emitter = this._injector.getValue('emitter');
         }
     }
@@ -885,4 +1110,4 @@ class Application {
     }
 }
 
-export { Application, Commands, Emitter__ as Emitter, Mediators, Modules, infuse, utils };
+export { Application, Commands, Emitter, Mediators, Modules, Signal, infuse, utils };

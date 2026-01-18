@@ -1,4 +1,4 @@
-import { Signal, SignalBinding } from 'signals';
+import { Signal, Binding } from './signal';
 
 interface Injector {
     createChild(): Injector;
@@ -8,7 +8,7 @@ interface Injector {
 }
 
 interface Emitter {
-    addListener(id: string, handler: Function, scope: any): SignalBinding;
+    addListener(id: string, handler: Function, scope: any): Binding;
     getSignal(id: string): Signal | undefined;
 }
 
@@ -29,7 +29,7 @@ function interceptorHandler(
     id: string,
     CommandClass: CommandClass,
     signal: Signal,
-    binding: SignalBinding,
+    binding: Binding,
     ...args: any[]
 ): void {
     const childInjector = injector.createChild();
@@ -44,7 +44,7 @@ function interceptorHandler(
     childInjector.dispose();
 }
 
-function addInterceptor(scope: Commands, id: string, CommandClass: CommandClass): SignalBinding {
+function addInterceptor(scope: Commands, id: string, CommandClass: CommandClass): Binding {
     const binding = scope.emitter.addListener(id, interceptorHandler, scope);
     binding.params = [scope.injector, id, CommandClass, scope.emitter.getSignal(id), binding];
     return binding;
@@ -57,7 +57,7 @@ function removeInterceptor(scope: Commands, id: string): void {
     }
 }
 
-function commandOptions(binding: SignalBinding): CommandOptions {
+function commandOptions(binding: Binding): CommandOptions {
     return {
         setInjector: function(injector: Injector): CommandOptions {
             if (binding && injector) {

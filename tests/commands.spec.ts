@@ -128,6 +128,7 @@ describe('Commands Tests', () => {
             let receivedId: string | undefined;
 
             class TestCommand {
+                static inject = ['id'];
                 id?: string;
                 execute() {
                     receivedId = this.id;
@@ -144,6 +145,7 @@ describe('Commands Tests', () => {
             let receivedSignal: any;
 
             class TestCommand {
+                static inject = ['signal'];
                 signal?: any;
                 execute() {
                     receivedSignal = this.signal;
@@ -160,6 +162,7 @@ describe('Commands Tests', () => {
             let receivedBinding: any;
 
             class TestCommand {
+                static inject = ['binding'];
                 binding?: any;
                 execute() {
                     receivedBinding = this.binding;
@@ -170,13 +173,14 @@ describe('Commands Tests', () => {
             emitter.dispatch('test-command');
 
             expect(receivedBinding).toBeDefined();
-            expect(receivedBinding.getListener()).toBeDefined();
+            expect(receivedBinding.active).toBe(true);
         });
 
         it('should use child injector for each command execution', () => {
             const injectors: Injector[] = [];
 
             class TestCommand {
+                static inject = ['injector'];
                 injector?: Injector;
                 execute() {
                     if (this.injector) {
@@ -241,6 +245,7 @@ describe('Commands Tests', () => {
             let receivedValue: any;
 
             class TestCommand {
+                static inject = ['customValue'];
                 customValue?: any;
                 execute() {
                     receivedValue = this.customValue;
@@ -440,6 +445,7 @@ describe('Commands Tests', () => {
             let receivedData: any;
 
             class TestCommand {
+                static inject = ['testData'];
                 testData?: any;
                 execute() {
                     receivedData = this.testData;
@@ -479,6 +485,7 @@ describe('Commands Tests', () => {
             let receivedService: any;
 
             class TestCommand {
+                static inject = ['service'];
                 service?: any;
 
                 execute() {
