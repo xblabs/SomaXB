@@ -69,6 +69,7 @@ class Modules {
         // create module instance
         const instantiate = (injector: Injector, value: ModuleClass, args?: any[]): ModuleInstance => {
             const params = infuse.getDependencies(value);
+            const hasExplicitInject = value.hasOwnProperty('inject');
 
             // add module function
             let moduleArgs: any[] = [value];
@@ -82,12 +83,15 @@ class Modules {
                 }
             }
 
-            // trim array
-            for (let a = moduleArgs.length - 1; a >= 0; a--) {
-                if (typeof moduleArgs[a] === 'undefined') {
-                    moduleArgs.splice(a, 1);
-                } else {
-                    break;
+            // trim trailing undefined values only if no explicit inject property
+            // (allows user args to fill param slots when params are parsed from function signature)
+            if (!hasExplicitInject) {
+                for (let a = moduleArgs.length - 1; a >= 0; a--) {
+                    if (typeof moduleArgs[a] === 'undefined') {
+                        moduleArgs.splice(a, 1);
+                    } else {
+                        break;
+                    }
                 }
             }
 

@@ -218,7 +218,12 @@ export class Injector {
         if (vo.cl) {
             if (vo.singleton) {
                 if (!vo.value) {
-                    vo.value = this.createInstance(vo.cl, ...args);
+                    // Set value before inject to support circular dependencies
+                    vo.value = this.instantiate(vo.cl, ...args);
+                    this.inject(vo.value);
+                    if (typeof vo.value.postConstruct === 'function') {
+                        vo.value.postConstruct();
+                    }
                 }
                 return vo.value;
             } else {
@@ -250,32 +255,72 @@ export class Injector {
             throw new Error(infuse.errors.CREATE_INSTANCE_INVALID_PARAM);
         }
         const params = infuse.getDependencies(TargetClass);
-        if (this.strictMode && !TargetClass.hasOwnProperty('inject')) {
+        const injectDeps = infuse.getExplicitInjectDependencies(TargetClass);
+        const injectCount = injectDeps.length;
+        const hasExplicitInject = TargetClass.hasOwnProperty('inject');
+
+        if (this.strictMode && !hasExplicitInject) {
             throw new Error(infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE + " : " + TargetClass.name + "(" + params.join(', ') + ")");
-        } else if (this.strictModeConstructorInjection && params.length > 0 && !TargetClass.hasOwnProperty('inject')) {
+        } else if (this.strictModeConstructorInjection && params.length > 0 && !hasExplicitInject) {
             throw new Error(infuse.errors.DEPENDENCIES_MISSING_IN_STRICT_MODE_CONSTRUCTOR_INJECTION + " : " + TargetClass.name + "(" + params.join(', ') + ")");
         }
         const constructorArgs: any[] = [null];
+        const nonInjectParamCount = params.length - injectCount;
+        // Determine if args should override inject slots or fill non-inject slots
+        const argsOverrideInject = args.length > nonInjectParamCount || nonInjectParamCount === 0;
+
         for (let i = 0, l = params.length; i < l; i++) {
-            if (args.length > i && args[i] !== undefined && args[i] !== null) {
-                // argument found
-                constructorArgs.push(args[i]);
-            } else {
+            if (argsOverrideInject) {
+                // Args are positional, can override inject slots
+                if (args.length > i) {
+                    // Arg provided at this position (even if undefined), use it
+                    constructorArgs.push(args[i]);
+                } else {
+                    const name = params[i];
+                    const vo = this.getMappingVo(name);
+                    if (!!vo) {
+                        constructorArgs.push(this.getInjectedValue(vo, name));
+                    } else {
+                        // Don't throw if strictMode is on with inject declared (allows optional deps)
+                        if (this.throwOnMissing && !(this.strictMode && hasExplicitInject)) {
+                            throw new Error(formatMappingError(name, TargetClass.name));
+                        }
+                        constructorArgs.push(undefined);
+                    }
+                }
+            } else if (i < injectCount) {
+                // This is an inject slot - use mapping only
                 const name = params[i];
-                // no argument found
                 const vo = this.getMappingVo(name);
                 if (!!vo) {
-                    // found mapping
-                    const val = this.getInjectedValue(vo, name);
-                    constructorArgs.push(val);
+                    constructorArgs.push(this.getInjectedValue(vo, name));
                 } else {
-                    // no mapping found
-                    if (this.throwOnMissing) {
+                    if (this.throwOnMissing && !hasExplicitInject) {
                         throw new Error(formatMappingError(name, TargetClass.name));
                     }
                     constructorArgs.push(undefined);
                 }
+            } else {
+                // This is a param slot after inject - fill from args offset by injectCount
+                const argIndex = i - injectCount;
+                if (args.length > argIndex) {
+                    constructorArgs.push(args[argIndex]);
+                } else {
+                    const name = params[i];
+                    const vo = this.getMappingVo(name);
+                    if (!!vo) {
+                        constructorArgs.push(this.getInjectedValue(vo, name));
+                    } else if (this.throwOnMissing) {
+                        throw new Error(formatMappingError(name, TargetClass.name));
+                    } else {
+                        constructorArgs.push(undefined);
+                    }
+                }
             }
+        }
+        // add remaining args beyond params (for rest parameters)
+        for (let i = params.length; i < args.length; i++) {
+            constructorArgs.push(args[i]);
         }
         return new (Function.prototype.bind.apply(TargetClass, constructorArgs as [any, ...any[]]))();
     }
@@ -404,6 +449,10 @@ infuse.getDependencies = function(cl: any): string[] {
         for (let i = 0, l = spl.length; i < l; i++) {
             // removes default es6 values
             const cArg = spl[i].split('=')[0].replace(/\s/g, '');
+            // skip rest parameters (e.g., ...args) as they can't be injected
+            if (cArg.indexOf('...') === 0) {
+                continue;
+            }
             // Only override arg with non-falsey deps value at same key
             const arg = (deps && deps[i]) ? deps[i] : cArg;
             arg.replace(FN_ARG, extractName as any);
