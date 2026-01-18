@@ -1,9 +1,9 @@
 {
-    "name": "@soundstep/soma",
-    "version": "3.0.4",
-    "author": "Romuald Quantin <romu@soundstep.com> (http://www.soundstep.com)",
+    "name": "soma-xb",
+    "version": "4.0.0",
+    "author": "XB Labs",
     "license": "MIT",
-    "description": "Soma is a javascript framework created to build scalable and maintainable applications.",
+    "description": "A modern TypeScript framework for building scalable, loosely-coupled applications with dependency injection and event-driven architecture.",
     "scripts": {
         "build": "rollup -c",
         "test": "mocha --require @babel/register 'tests/**/*.js'",
@@ -15,23 +15,24 @@
     "browser": "index.ts",
     "types": "types/soma.d.ts",
     "keywords": [
-        "soma.js",
         "soma",
-        "javascript",
-        "js",
+        "soma-xb",
+        "typescript",
         "framework",
-        "mvc",
-        "lightweight",
-        "dependency injection",
-        "injection"
+        "dependency-injection",
+        "di",
+        "ioc",
+        "event-driven",
+        "command-pattern",
+        "mediator-pattern"
     ],
-    "homepage": "https://github.com/soundstep/soma",
+    "homepage": "https://github.com/xblabs/SomaXB",
     "publishConfig": {
         "access": "public"
     },
     "repository": {
         "type": "git",
-        "url": "http://github.com/henryschmieder/soma.git"
+        "url": "https://github.com/xblabs/SomaXB.git"
     },
     "devDependencies": {
         "@babel/core": "7.6.4",
