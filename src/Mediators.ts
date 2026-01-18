@@ -67,15 +67,14 @@ class Mediators
             }
             target = target.get();
         }
-        let targetList:(Element|NodeListOf<Element>)[] = []
+        let targetList:(Element|Element[]|NodeListOf<Element>)[] = []
         const mediatorList = [];
         if( Array.isArray( target ) && target.length > 0 ) {
-            targetList = [...target]
-            // if( aggregateTarget ) {
-            //     targetList = target
-            // } else {
-            //     targetList = [...target]
-            // }
+            if( aggregateTarget ) {
+                targetList = [target]
+            } else {
+                targetList = [...target]
+            }
         } else if( target instanceof HTMLElement) {
             targetList = [target]
         }else if( target instanceof NodeList ) {
@@ -88,10 +87,10 @@ class Mediators
             }
         }
         for( let i = 0, l = targetList.length; i < l; i++ ) {
-            const injector = this.injector.createChild();
-            //const injector = this.injector;
-            injector.mapValue( 'target', targetList[i] );
-            const mediator = injector.createInstance( MediatorClass );
+            const childInjector = this.injector.createChild();
+            childInjector.mapValue( 'injector', childInjector );
+            childInjector.mapValue( 'target', targetList[i] );
+            const mediator = childInjector.createInstance( MediatorClass );
 
             //call init() method if present -- NOTE already covered in infuse.injector postConstruct()
             // if( typeof MediatorClass.prototype.postConstruct === 'function' ) {
