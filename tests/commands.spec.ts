@@ -170,7 +170,7 @@ describe('Commands Tests', () => {
             emitter.dispatch('test-command');
 
             expect(receivedBinding).toBeDefined();
-            expect(receivedBinding.listener).toBeDefined();
+            expect(receivedBinding.getListener()).toBeDefined();
         });
 
         it('should use child injector for each command execution', () => {

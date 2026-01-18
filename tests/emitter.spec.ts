@@ -25,7 +25,7 @@ describe('Emitter Tests', () => {
             const handler = jest.fn();
             const binding = emitter.addListener('test-signal', handler);
             expect(binding).toBeDefined();
-            expect(binding.listener).toBe(handler);
+            expect(binding.getListener()).toBe(handler);
         });
 
         it('should dispatch a signal without data', () => {
