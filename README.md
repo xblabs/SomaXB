@@ -154,20 +154,146 @@ app.modules.remove('auth');
 
 ### Event System
 
+#### Basic Signal Usage
+
 ```typescript
-// Add listener
-const binding = app.emitter.addListener('data/loaded', (data) => {
-  console.log('Data received:', data);
+import { Signal } from 'soma-xb';
+
+// Create a typed signal
+const onUserLogin = new Signal<{ userId: string; timestamp: Date }>();
+
+// Add a listener
+onUserLogin.add((data) => {
+    console.log(`User ${data.userId} logged in at ${data.timestamp}`);
 });
 
-// Dispatch event
-app.emitter.dispatch('data/loaded', { items: [1, 2, 3] });
+// Dispatch
+onUserLogin.dispatch({ userId: 'abc123', timestamp: new Date() });
+```
 
-// Remove listener
+#### Emitter (String-keyed Events)
+
+```typescript
+import { Emitter } from 'soma-xb';
+
+// Untyped (flexible)
+const emitter = new Emitter();
+
+emitter.addListener('user:login', (data) => {
+    console.log('Login:', data.username);
+});
+
+emitter.dispatch('user:login', { username: 'john' });
+```
+
+#### Type-Safe Emitter with Event Map
+
+```typescript
+import { Emitter } from 'soma-xb';
+
+// Define your event types
+interface AppEvents {
+    'todo:add': { item: { id: string; text: string } };
+    'todo:remove': { id: string };
+    'app:ready': void;
+}
+
+const emitter = new Emitter<AppEvents>();
+
+// Fully typed - autocomplete works, wrong payloads error
+emitter.addListener('todo:add', (data) => {
+    console.log(data.item.text);  // data is typed as { item: { id, text } }
+});
+
+emitter.dispatch('todo:add', { item: { id: '1', text: 'Buy milk' } });
+```
+
+#### Priority & One-Time Listeners
+
+```typescript
+const emitter = new Emitter();
+
+// Higher priority executes first
+emitter.addListener('event', () => console.log('Second'), undefined, 0);
+emitter.addListener('event', () => console.log('First'), undefined, 10);
+
+// One-time listener (auto-removes after first dispatch)
+emitter.addListenerOnce('init', () => console.log('Runs once'));
+
+emitter.dispatch('event');  // "First", "Second"
+emitter.dispatch('init');   // "Runs once"
+emitter.dispatch('init');   // (nothing - listener removed)
+```
+
+#### Binding Control
+
+```typescript
+const emitter = new Emitter();
+
+const binding = emitter.addListener('event', (data) => {
+    console.log(data);
+});
+
+// Temporarily disable
+binding.active = false;
+emitter.dispatch('event', { msg: 'ignored' });  // won't fire
+
+// Re-enable
+binding.active = true;
+emitter.dispatch('event', { msg: 'works' });    // fires
+
+// Remove permanently
 binding.detach();
+```
 
-// Or remove all listeners for an event
-app.emitter.removeListener('data/loaded');
+#### Halt Propagation
+
+```typescript
+const emitter = new Emitter();
+
+emitter.addListener('event', () => {
+    console.log('First handler');
+    emitter.haltSignal('event');  // Stop propagation
+}, undefined, 10);
+
+emitter.addListener('event', () => {
+    console.log('Never reached');
+}, undefined, 0);
+
+emitter.dispatch('event');  // Only "First handler"
+```
+
+#### Context/Scope Binding
+
+```typescript
+class MyService {
+    name = 'MyService';
+
+    handleEvent(data: any) {
+        console.log(`${this.name} received:`, data);
+    }
+}
+
+const service = new MyService();
+const emitter = new Emitter();
+
+// Pass scope as third parameter
+emitter.addListener('event', service.handleEvent, service);
+
+emitter.dispatch('event', { value: 42 });
+// "MyService received: { value: 42 }"
+```
+
+#### Direct Signal Access
+
+```typescript
+const emitter = new Emitter();
+
+emitter.addListener('my-event', () => {});
+
+const signal = emitter.getSignal('my-event');
+console.log(signal?.getNumListeners());  // 1
+signal?.removeAll();  // Clear all listeners
 ```
 
 ## API Reference
@@ -195,14 +321,40 @@ The main application class that bootstraps all subsystems.
 | `createInstance(Class, ...args)` | Create instance with injection |
 | `createChild()` | Create child injector |
 
+### Signal
+
+| Method | Description |
+|--------|-------------|
+| `add(handler, context?, priority?)` | Add listener |
+| `addOnce(handler, context?, priority?)` | Add one-time listener |
+| `remove(handler, context?)` | Remove specific listener |
+| `removeAll()` | Remove all listeners |
+| `dispatch(data)` | Dispatch to all listeners |
+| `halt()` | Stop propagation during dispatch |
+| `has(handler, context?)` | Check if listener exists |
+| `getNumListeners()` | Get listener count |
+
 ### Emitter
 
 | Method | Description |
 |--------|-------------|
-| `addListener(id, handler, scope?)` | Add event listener |
-| `removeListener(id, handler?)` | Remove listener(s) |
+| `addListener(id, handler, scope?, priority?)` | Add event listener |
+| `addListenerOnce(id, handler, scope?, priority?)` | Add one-time listener |
+| `removeListener(id, handler, scope?)` | Remove listener |
 | `dispatch(id, data?)` | Dispatch event |
 | `getSignal(id)` | Get underlying Signal |
+| `haltSignal(id)` | Stop signal propagation |
+| `hasListeners(id)` | Check if event has listeners |
+
+### Binding
+
+| Property/Method | Description |
+|-----------------|-------------|
+| `active` | Enable/disable the binding |
+| `once` | Whether binding fires only once |
+| `priority` | Listener priority |
+| `detach()` | Remove from signal |
+| `execute(data?)` | Manually execute handler |
 
 ### Commands
 
@@ -239,7 +391,7 @@ SomaXB is a complete TypeScript rewrite with a long lineage:
 **This TypeScript version includes:**
 - Complete migration to TypeScript with strict typing
 - Modern browser support (removed IE7/8 legacy code)
-- Comprehensive test suite (260+ tests)
+- Comprehensive test suite (261 tests)
 - ES module support
 - Improved dependency injection with circular reference support
 
