@@ -11,12 +11,6 @@ A modern TypeScript framework for building scalable, loosely-coupled application
 - **Modules** - Lazy-loaded application modules with lifecycle hooks
 - **Templates** - Simple DOM templating engine
 
-## Installation
-
-```bash
-npm install soma-xb
-```
-
 ## Quick Start
 
 ### Basic Application
@@ -237,9 +231,9 @@ The main application class that bootstraps all subsystems.
 
 SomaXB is a complete TypeScript rewrite with a long lineage:
 
-1. **2010** - Soma AS3 framework created by Romuald Quantin for ActionScript 3
-2. **2011** - First JavaScript prototype ported by XB Labs using SmoothTools for class-based OOP
-3. **2011+** - [SomaJS](https://github.com/nicholasromeo/soma) developed by Romuald Quantin, adding mediators, modules, infuse (DI), and templates
+1. **2010** - Soma AS3 framework created by [Romuald Quantin](https://github.com/soundstep/soma/commits?author=soundstep) for ActionScript 3
+2. **2011** - First JavaScript prototype ported by XB Labs using MooTools for class-based OOP
+3. **2011+** - [SomaJS](https://github.com/somajs/somajs) developed by Romuald Quantin, adding mediators, modules, infuse (DI), and templates
 4. **2024** - Complete TypeScript rewrite by XB Labs
 
 **This TypeScript version includes:**
